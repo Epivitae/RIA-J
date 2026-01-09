@@ -11,7 +11,7 @@
 [![Platform](https://img.shields.io/badge/Platform-ImageJ%20%2F%20Fiji-brightgreen?style=flat-square&logo=imagej)](https://imagej.net/)
 [![Java](https://img.shields.io/badge/Java-8%2B-orange?style=flat-square&logo=openjdk)](https://www.java.com/)
 [![License](https://img.shields.io/github/license/Epivitae/RIA-J?style=flat-square)](LICENSE)
-
+[![DOI](https://zenodo.org/badge/1131155665.svg)](https://doi.org/10.5281/zenodo.18200077)
 </div>
 
 ---
