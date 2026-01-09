@@ -1,0 +1,54 @@
+{
+  "title": "RIA-J: Ratio Imaging Analyzer (Java) - Interactive Ratiometric Analysis for ImageJ/Fiji",
+  "description": "<p><strong>RIA-J (Ratio Imaging Analyzer - Java Edition)</strong> is a lightweight, high-performance ImageJ/Fiji plugin designed for interactive ratiometric fluorescence analysis. It serves as the native Java counterpart to the standalone <a href=\"https://github.com/Epivitae/RatioImagingAnalyzer\">RIA (Python)</a> software.</p><p>Unlike traditional macro-based workflows, RIA-J provides a modern, non-modal <strong>Swing Dashboard</strong> that allows researchers to fine-tune background subtraction and thresholding parameters in real-time, visualizing the results instantly on the current frame.</p><p><strong>Key Features:</strong></p><ul><li><strong>🎛️ Interactive Dashboard:</strong> A floating control panel engineered with Java Swing for seamless parameter tuning without blocking the image view.</li><li><strong>🧠 Smart Masking:</strong> Implements dynamic <code>NaN</code> thresholding and background subtraction to eliminate noise and edge artifacts in ratio calculations.</li><li><strong>📉 Scientific-Grade Processing:</strong> Features optional <strong>Normalized Convolution</strong> (smooth-while-preserving-edges) to handle signal boundaries correctly, avoiding the &quot;dark halo&quot; effect of standard Gaussian blurs.</li><li><strong>⚡ Batch Processing:</strong> Includes a one-click &quot;Apply to Stack&quot; engine to process high-dimensional time-lapse data (T-series) efficiently.</li><li><strong>🎨 Visualization:</strong> Integrated scientific LUTs (Fire, Ice, Physics) and automated Calibration Bar generation.</li></ul>",
+  "creators": [
+    {
+      "name": "Wang, Kui",
+      "affiliation": "Center for Excellence in Brain Science and Intelligence Technology (Institute of Neuroscience), Chinese Academy of Sciences",
+      "orcid": "0000-0002-9436-3632"
+    }
+  ],
+  "access_right": "open",
+  "license": "MIT",
+  "keywords": [
+    "imagej",
+    "fiji",
+    "imagej-plugin",
+    "java",
+    "swing-gui",
+    "scientific-software",
+    "bioimage-analysis",
+    "quantitative-biology",
+    "ratiometric-imaging",
+    "ratiometric-analysis",
+    "fluorescence-microscopy",
+    "FRET",
+    "fret-analysis",
+    "calcium-imaging",
+    "ion-sensing",
+    "metabolic-imaging",
+    "mitochondrial-metabolism",
+    "redox-ratio",
+    "nadh-imaging",
+    "tryptophan-fluorescence",
+    "intrinsic-fluorescence",
+    "protein-conformation",
+    "atp-sensor",
+    "genetically-encoded-indicator",
+    "biosensors",
+    "normalized-convolution",
+    "background-subtraction",
+    "dynamic-masking"
+  ],
+  "upload_type": "software",
+  "related_identifiers": [
+    {
+      "relation": "isSupplementTo",
+      "identifier": "https://github.com/Epivitae/RIA-J"
+    },
+    {
+      "relation": "isVersionOf",
+      "identifier": "https://github.com/Epivitae/RatioImagingAnalyzer"
+    }
+  ]
+}

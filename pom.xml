@@ -4,7 +4,7 @@
 
   <groupId>com.mybiolab</groupId>
   <artifactId>RIA_J</artifactId>
-  <version>0.1.0-SNAPSHOT</version>
+  <version>0.3.0</version>
   <packaging>jar</packaging>
 
   <name>RIA_J</name>

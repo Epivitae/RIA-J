@@ -24,22 +24,23 @@ import java.awt.event.*;
  * PROJECT: RIA-J (Ratio Imaging Analyzer - Java Edition)
  * VERSION: v0.3.0 (Modern UI & Color Bar Control)
  * AUTHOR: Kui Wang
+ * DESCRIPTION: An interactive ImageJ plugin for ratiometric fluorescence analysis.
  */
 public class RIA_J extends PlugInFrame implements PlugIn, ChangeListener, ActionListener, ItemListener {
 
-    // --- Swing GUI 控件 ---
-    // 使用 JSlider 代替 Scrollbar，颜值提升 10 倍
+    // --- Swing GUI Components ---
+    // Using JSlider instead of AWT Scrollbar for a modern look
     private JSlider sliderBg, sliderThresh, sliderMin, sliderMax;
     private JLabel lblBg, lblThresh, lblMin, lblMax;
     private JComboBox<String> comboLUT;
-    private JButton btnApply, btnAddBar, btnRemoveBar; // 新增移除按钮
+    private JButton btnApply, btnAddBar, btnRemoveBar;
     
-    // --- 数据引用 ---
-    private ImagePlus imp1; 
-    private ImagePlus imp2; 
-    private ImagePlus resultImp; 
+    // --- Data References ---
+    private ImagePlus imp1; // Numerator
+    private ImagePlus imp2; // Denominator
+    private ImagePlus resultImp; // Result Window
     
-    // --- 默认参数 ---
+    // --- Default Parameters ---
     private int valBg = 100;
     private int valThresh = 200;
     private double valMin = 0.0;
@@ -51,13 +52,13 @@ public class RIA_J extends PlugInFrame implements PlugIn, ChangeListener, Action
 
     @Override
     public void run(String arg) {
-        // 1. 安全检查
+        // 1. Safety Check
         if (WindowManager.getImageCount() < 2) {
-            IJ.error("RIA-J", "请先打开并拆分双通道图像 (Split Channels)！");
+            IJ.error("RIA-J Error", "Please open and split the dual-channel image first (Image > Color > Split Channels)!");
             return;
         }
 
-        // 2. 选择通道
+        // 2. Select Channels
         int[] wList = WindowManager.getIDList();
         String[] titles = new String[wList.length];
         for (int i = 0; i < wList.length; i++) {
@@ -73,39 +74,39 @@ public class RIA_J extends PlugInFrame implements PlugIn, ChangeListener, Action
         imp1 = WindowManager.getImage(wList[gd.getNextChoiceIndex()]);
         imp2 = WindowManager.getImage(wList[gd.getNextChoiceIndex()]);
 
-        // 3. 创建初始窗口
+        // 3. Create initial empty result window
         createInitialResult();
 
-        // 4. 构建现代 GUI
+        // 4. Build the modern Swing GUI
         buildGUI();
         
-        // 5. 预览
+        // 5. Trigger initial preview
         updatePreview();
     }
 
     /**
-     * 构建基于 Swing 的现代化界面
+     * Build the modern Swing-based Interface
      */
     private void buildGUI() {
-        // 设置窗口风格为系统原生 (让 Windows 下看起来像 Windows 程序)
+        // Set System Native Look and Feel (makes it look like a native Windows app)
         try {
             UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
         } catch (Exception e) { e.printStackTrace(); }
 
-        // 主容器：使用 JPanel
+        // Main Container
         JPanel mainPanel = new JPanel();
         mainPanel.setLayout(new BoxLayout(mainPanel, BoxLayout.Y_AXIS));
-        mainPanel.setBorder(new EmptyBorder(10, 10, 10, 10)); // 四周留白
+        mainPanel.setBorder(new EmptyBorder(10, 10, 10, 10)); // Padding
 
-        // --- 模块 1: Calculation Parameters ---
+        // --- Section 1: Calculation Parameters ---
         JPanel pCalc = new JPanel(new GridBagLayout());
-        pCalc.setBorder(new TitledBorder("Calculation Parameters")); // 分组边框
+        pCalc.setBorder(new TitledBorder("Calculation Parameters")); 
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.fill = GridBagConstraints.HORIZONTAL;
-        gbc.insets = new Insets(5, 5, 5, 5); // 控件间距
+        gbc.insets = new Insets(5, 5, 5, 5); // Spacing
         gbc.weightx = 1.0;
 
-        // Bg Slider
+        // Background Slider
         lblBg = new JLabel("Background: " + valBg);
         sliderBg = new JSlider(0, 1000, valBg);
         setupSlider(sliderBg);
@@ -120,13 +121,13 @@ public class RIA_J extends PlugInFrame implements PlugIn, ChangeListener, Action
         gbc.gridx = 0; gbc.gridy = 3; pCalc.add(sliderThresh, gbc);
 
         mainPanel.add(pCalc);
-        mainPanel.add(Box.createVerticalStrut(10)); // 垂直间距
+        mainPanel.add(Box.createVerticalStrut(10)); // Vertical spacer
 
-        // --- 模块 2: Visualization ---
+        // --- Section 2: Visualization ---
         JPanel pVis = new JPanel(new GridBagLayout());
         pVis.setBorder(new TitledBorder("Visualization"));
         
-        // Min/Max Sliders
+        // Min/Max Ratio Sliders
         lblMin = new JLabel("Min Ratio: " + valMin);
         sliderMin = new JSlider(0, 1000, (int)(valMin*100));
         setupSlider(sliderMin);
@@ -139,7 +140,7 @@ public class RIA_J extends PlugInFrame implements PlugIn, ChangeListener, Action
         gbc.gridx = 0; gbc.gridy = 2; pVis.add(lblMax, gbc);
         gbc.gridx = 0; gbc.gridy = 3; pVis.add(sliderMax, gbc);
 
-        // LUT Combobox
+        // LUT Selection
         JPanel pLut = new JPanel(new FlowLayout(FlowLayout.LEFT));
         pLut.add(new JLabel("LUT Color: "));
         String[] luts = {"Fire", "Ice", "Physics", "Grays", "Spectrum", "Red/Green"};
@@ -152,24 +153,23 @@ public class RIA_J extends PlugInFrame implements PlugIn, ChangeListener, Action
         mainPanel.add(pVis);
         mainPanel.add(Box.createVerticalStrut(10));
 
-        // --- 模块 3: Actions ---
-        JPanel pAction = new JPanel(new GridLayout(2, 2, 5, 5)); // 2行2列
+        // --- Section 3: Actions ---
+        JPanel pAction = new JPanel(new GridLayout(2, 2, 5, 5)); 
         pAction.setBorder(new TitledBorder("Actions"));
 
         btnAddBar = new JButton("Add Color Bar");
         btnAddBar.addActionListener(this);
         pAction.add(btnAddBar);
 
-        // 新增的按钮
         btnRemoveBar = new JButton("Remove Bar");
         btnRemoveBar.addActionListener(this);
         pAction.add(btnRemoveBar);
 
-        btnApply = new JButton("<html><b>Apply to Stack</b></html>"); // 加粗文字
-        btnApply.setForeground(new Color(200, 0, 0)); // 红色警示
+        btnApply = new JButton("<html><b>Apply to Stack</b></html>"); // Bold text
+        btnApply.setForeground(new Color(200, 0, 0)); // Red warning color
         btnApply.addActionListener(this);
         
-        // 让 Apply 按钮占据第二行的整行
+        // Wrap 'Apply' button to take full width of the second row
         JPanel pApplyWrapper = new JPanel(new BorderLayout());
         pApplyWrapper.add(btnApply, BorderLayout.CENTER);
         pApplyWrapper.setBorder(new EmptyBorder(5, 0, 0, 0));
@@ -177,7 +177,7 @@ public class RIA_J extends PlugInFrame implements PlugIn, ChangeListener, Action
         mainPanel.add(pAction);
         mainPanel.add(pApplyWrapper);
 
-        // 将 Swing 面板加入到 ImageJ 的 PlugInFrame (AWT) 中
+        // Add Swing panel to ImageJ PlugInFrame
         add(mainPanel);
         pack();
         GUI.center(this);
@@ -185,7 +185,7 @@ public class RIA_J extends PlugInFrame implements PlugIn, ChangeListener, Action
     }
 
     private void setupSlider(JSlider slider) {
-        slider.setPreferredSize(new Dimension(250, 20)); // 设置合适的大小
+        slider.setPreferredSize(new Dimension(250, 20)); 
         slider.addChangeListener(this);
     }
 
@@ -198,11 +198,11 @@ public class RIA_J extends PlugInFrame implements PlugIn, ChangeListener, Action
         IJ.run(resultImp, "Fire", "");
     }
 
-    // --- 事件监听 ---
+    // --- Event Listeners ---
 
     @Override
     public void stateChanged(ChangeEvent e) {
-        // 处理滑块拖动 (Swing 使用 ChangeListener)
+        // Handle slider dragging
         valBg = sliderBg.getValue();
         valThresh = sliderThresh.getValue();
         valMin = sliderMin.getValue() / 100.0;
@@ -213,8 +213,7 @@ public class RIA_J extends PlugInFrame implements PlugIn, ChangeListener, Action
         lblMin.setText(String.format("Min Ratio: %.2f", valMin));
         lblMax.setText(String.format("Max Ratio: %.2f", valMax));
 
-        // 仅当用户在拖动时，为了性能可以跳过部分帧，
-        // 但 JSlider 响应很快，直接更新通常没问题
+        // Update preview immediately (JSlider is efficient enough)
         updatePreview();
     }
 
@@ -239,8 +238,11 @@ public class RIA_J extends PlugInFrame implements PlugIn, ChangeListener, Action
         }
     }
 
-    // --- 核心逻辑 ---
+    // --- Core Logic ---
 
+    /**
+     * Preview Mode: Calculates only the CURRENT frame.
+     */
     private void updatePreview() {
         if (resultImp == null || resultImp.getWindow() == null) return;
         
@@ -255,18 +257,20 @@ public class RIA_J extends PlugInFrame implements PlugIn, ChangeListener, Action
 
         resultImp.setProcessor(fpResult);
         
-        // 保持 overlay (Color Bar) 不消失
-        // setProcessor 可能会清除 overlay，所以需要检查并重绘
+        // Preserve Overlay (Color Bar) if it exists
         if (resultImp.getOverlay() != null) {
             resultImp.draw(); 
         }
         
-        // 保持 LUT
+        // Maintain LUT
         String lut = (String) comboLUT.getSelectedItem();
         if(lut == null) lut = "Fire";
         IJ.run(resultImp, lut, ""); 
     }
 
+    /**
+     * Batch Mode: Process the entire stack.
+     */
     private void processEntireStack() {
         IJ.showStatus("Processing entire stack...");
         int width = imp1.getWidth();
@@ -293,6 +297,9 @@ public class RIA_J extends PlugInFrame implements PlugIn, ChangeListener, Action
         IJ.showStatus("Finished!");
     }
 
+    /**
+     * Calculation Kernel: (Ch1 - Bg) / (Ch2 - Bg)
+     */
     private FloatProcessor calculateSingleFrame(ImageProcessor ip1, ImageProcessor ip2, double bg, double thresh) {
         int width = ip1.getWidth();
         int height = ip1.getHeight();
@@ -307,7 +314,7 @@ public class RIA_J extends PlugInFrame implements PlugIn, ChangeListener, Action
             if (v2 < 0) v2 = 0;
 
             if (v2 < thresh) {
-                pRes[i] = Float.NaN;
+                pRes[i] = Float.NaN; // Mask background
             } else {
                 float r = v1 / v2;
                 if (Float.isInfinite(r) || Float.isNaN(r)) pRes[i] = Float.NaN;
@@ -319,22 +326,25 @@ public class RIA_J extends PlugInFrame implements PlugIn, ChangeListener, Action
 
     private void addColorBar() {
         if (resultImp == null) return;
-        // 使用 Overlay 模式添加，这样不破坏像素值
+        // Use Overlay mode to avoid modifying pixel data
         IJ.run(resultImp, "Calibration Bar...", "location=[Upper Right] fill=None label=White number=5 decimal=1 font=12 zoom=1 overlay");
     }
 
     private void removeColorBar() {
         if (resultImp == null) return;
-        // 清除所有的 Overlay (包括 Color Bar 和其他 ROI 标记)
+        // Remove all overlays
         resultImp.setOverlay(null);
     }
 
     public static void main(String[] args) {
         try {
+            // Development mode setup
             System.setProperty("plugins.dir", System.getProperty("user.dir") + "\\target\\classes");
             new ImageJ();
             
+            // NOTE: Update this path to your local sample data for testing
             String imagePath = "D:\\2_Greek\\16_imagej\\MAX_K1555.tif"; 
+            
             ImagePlus imp = IJ.openImage(imagePath);
             if (imp == null) imp = IJ.openImage();
             

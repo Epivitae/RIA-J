@@ -1,13 +1,16 @@
-# RIA-J: Ratio Imaging Analyzer (Java Edition)
-
 <div align="center">
 
-**RIA-J** is a lightweight ImageJ/Fiji plugin designed for interactive ratiometric analysis. 
-It serves as the native Java counterpart to the standalone [RIA (Python)](https://github.com/Epivitae/RatioImagingAnalyzer) software.
+<img src="images/app_ico.png" alt="RIA-J Logo" width="120"/>
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-![Java](https://img.shields.io/badge/Java-8%2B-ed8b00?logo=java&logoColor=white)
-![Platform](https://img.shields.io/badge/Platform-ImageJ%20%2F%20Fiji-blue)
+# RIA-J: Ratio Imaging Analyzer (Java)
+
+**The native ImageJ/Fiji counterpart to the [RIA (Python)](https://github.com/Epivitae/RatioImagingAnalyzer) project.**
+
+[![Release](https://img.shields.io/github/v/release/Epivitae/RIA-J?style=flat-square&color=blue)](https://github.com/Epivitae/RIA-J/releases)
+[![Downloads](https://img.shields.io/github/downloads/Epivitae/RIA-J/total?style=flat-square&color=success)](https://github.com/Epivitae/RIA-J/releases)
+[![Platform](https://img.shields.io/badge/Platform-ImageJ%20%2F%20Fiji-brightgreen?style=flat-square&logo=imagej)](https://imagej.net/)
+[![Java](https://img.shields.io/badge/Java-8%2B-orange?style=flat-square&logo=openjdk)](https://www.java.com/)
+[![License](https://img.shields.io/github/license/Epivitae/RIA-J?style=flat-square)](LICENSE)
 
 </div>
 
@@ -15,79 +18,76 @@ It serves as the native Java counterpart to the standalone [RIA (Python)](https:
 
 ## 📖 Overview
 
-**RIA-J** brings the rigorous ratiometric workflow of the "Ratio Imaging Analyzer" directly into the **ImageJ/Fiji** ecosystem. It is designed to replace complex, manual macro-writing with a user-friendly, interactive dashboard.
+**RIA-J** is a lightweight, interactive plugin designed to bring the rigorous workflow of ratiometric fluorescence analysis directly into the **ImageJ/Fiji** ecosystem. 
 
-Unlike simple "image calculators," RIA-J focuses on **Data Fidelity**:
-* **Smart Masking**: Uses dynamic intensity thresholding to set background pixels to `NaN` (Not a Number), preventing edge artifacts and noise amplification.
-* **Normalized Convolution** (Optional): Preserves edges during smoothing, avoiding the "dark halo" effect common in standard Gaussian blurs.
-* **Interactive Tuning**: A non-modal Swing dashboard lets you adjust parameters and see the result on the current frame instantly.
+It empowers researchers to perform **Background Subtraction**, **Dynamic Masking**, and **Real-time Ratio Calculation** through a modern, user-friendly dashboard, eliminating the need for complex macro scripting.
+
+![RIA-J Dashboard Interface](images/dashboard_preview.png)
+*(The interactive dashboard allows real-time tuning of parameters)*
 
 ## ✨ Key Features
 
-* **Modern Swing Dashboard**: A floating control panel that doesn't block the image view.
-* **Real-time Preview**: Drag sliders for Background or Threshold and see the mask update instantly on the current frame.
-* **Batch Processing**: One-click **"Apply to Stack"** to process high-dimensional time-lapse data (T-series).
-* **Visualization Tools**: Integrated LUT selection (Fire, Ice, Physics, etc.) and Calibration Bar support.
-* **Zero Dependencies**: Works with standard ImageJ 1.x or Fiji.
+* **🎛️ Modern Swing Dashboard**: A non-modal, floating control panel that allows you to adjust parameters while interacting with the image.
+* **⚡ Real-time Preview**: Instantly visualize how background subtraction and thresholding affect the ratio calculation on the current frame.
+* **🧠 Smart Masking**: Dynamic `NaN` thresholding ensures that background noise is effectively removed without creating edge artifacts.
+* **🎞️ Batch Processing**: One-click **"Apply to Stack"** functionality to process high-dimensional time-lapse data (T-series) efficiently.
+* **🎨 Visualization**: Built-in support for scientific LUTs (Fire, Ice, Physics) and Calibration Bars.
 
 ## 📥 Installation
 
-1.  Download the latest **`RIA_J-x.x.x.jar`** file from the [Releases](https://github.com/YOUR_USERNAME/RIA-J/releases) page.
-2.  **Drag and drop** the `.jar` file directly into the main toolbar of your Fiji/ImageJ.
-3.  Restart ImageJ.
-4.  The plugin will appear under: `Plugins > RIA-J > Ratio Processor`.
+1.  **Download**: Get the latest **`RIA_J-x.x.x.jar`** file from the [Releases](https://github.com/Epivitae/RIA-J/releases) page.
+2.  **Install**: Drag and drop the `.jar` file directly into the main toolbar of your Fiji/ImageJ.
+3.  **Restart**: Restart ImageJ.
+4.  **Run**: Find the plugin under `Plugins > RIA-J > Ratio Processor`.
 
-> **Note**: Alternatively, you can copy the jar file into your `Fiji.app/plugins/` folder.
+> **Note**: Alternatively, you can copy the jar file into your `Fiji.app/plugins/` folder manually.
 
 ## 📂 Sample Data
 
 To test the plugin immediately, you can use the provided sample dataset:
 
 1.  Navigate to the `sample_data/` folder in this repository.
-2.  Download **`Composite.tif`**.
+2.  Download **`dual_channel_demo.tif`**.
 3.  Drag it into ImageJ and follow the workflow below.
 
 ## 🛠️ Usage Workflow
 
-1.  **Open Image**: Drag your dual-channel time-lapse stack into ImageJ.
+1.  **Open Image**: Load your dual-channel time-lapse stack into ImageJ.
 2.  **Split Channels**:
     * Go to `Image > Color > Split Channels`.
-    * *Note: RIA-J requires two separate windows for the numerator and denominator.*
+    * *(RIA-J requires two separate windows for the numerator and denominator)*.
 3.  **Launch Plugin**:
     * Go to `Plugins > RIA-J > Ratio Processor`.
-    * Select the correct images for **Numerator (Ch1)** and **Denominator (Ch2)** in the popup dialog.
-4.  **Tune Parameters (Interactive Mode)**:
+    * Select the **Numerator (Ch1)** and **Denominator (Ch2)**.
+4.  **Interactive Tuning**:
     * **Background**: Adjust to subtract camera offset/scattered light.
-    * **NaN Threshold**: Increase until the background noise disappears (becomes transparent/black).
-    * **Visualization**: Adjust Min/Max sliders to change the contrast range (e.g., 0.5 to 5.0).
+    * **NaN Threshold**: Increase until the background becomes transparent (NaN).
+    * **Visualization**: Adjust Min/Max sliders to optimize contrast.
 5.  **Finalize**:
     * Click **Apply to Stack** to process the entire video.
     * Click **Add Color Bar** to overlay a scale bar.
 
 ## ⚙️ Build from Source
 
-If you are a developer and want to modify the code:
-
-**Prerequisites**: JDK 8 (or higher) and Maven.
+**Prerequisites**: JDK 8+ and Maven.
 
 ```bash
-# 1. Clone the repository
-git clone [https://github.com/YOUR_USERNAME/RIA-J.git](https://github.com/YOUR_USERNAME/RIA-J.git)
+git clone [https://github.com/Epivitae/RIA-J.git](https://github.com/Epivitae/RIA-J.git)
 cd RIA-J
-
-# 2. Build the package
-mvn package
+mvnd package
 ```
 
-The compiled plugin will be generated in the `target/` directory (e.g., `target/RIA_J-0.3.0.jar`).
+The compiled plugin will be generated in `target/RIA_J-0.3.0.jar`.
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please fork the repository and submit a Pull Request. 
+Contributions are welcome! Please fork the repository and submit a Pull Request.
 
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ---
-*Developed by Kui Wang. Part of the RIA Project family.*
+<div align="center">
+Developed by Kui Wang. Part of the RIA Project family.
+</div>
