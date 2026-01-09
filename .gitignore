@@ -1,0 +1,19 @@
+# Maven compiled files
+target/
+*.class
+
+# IDE settings (VS Code, IntelliJ, Eclipse)
+.vscode/
+.idea/
+*.iml
+.settings/
+.classpath
+.project
+.factorypath
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
