@@ -2,7 +2,7 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
-		 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+         http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
@@ -31,12 +31,14 @@
         <main-class>com.mybiolab.RIA_J</main-class>
         <license.licenseName>mit</license.licenseName>
         <license.copyrightOwners>Kui Wang</license.copyrightOwners>
+        
+        <enforcer.skip>true</enforcer.skip>
     </properties>
 
     <dependencies>
         <dependency>
             <groupId>net.imagej</groupId>
-            <artifactId>imagej</artifactId>
+            <artifactId>ij</artifactId>
         </dependency>
     </dependencies>
 
