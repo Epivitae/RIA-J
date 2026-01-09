@@ -22,7 +22,11 @@
 
 It empowers researchers to perform **Background Subtraction**, **Dynamic Masking**, and **Real-time Ratio Calculation** through a modern, user-friendly dashboard, eliminating the need for complex macro scripting.
 
-![RIA-J Dashboard Interface](images/ria-j-main.png)
+<div align="center">
+  <img src="images/ria-j-main.png" width="50%">
+</div>
+
+
 *(The interactive dashboard allows real-time tuning of parameters)*
 
 ## ✨ Key Features
