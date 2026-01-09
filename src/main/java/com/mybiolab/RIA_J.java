@@ -343,7 +343,7 @@ public class RIA_J extends PlugInFrame implements PlugIn, ChangeListener, Action
             new ImageJ();
             
             // NOTE: Update this path to your local sample data for testing
-            String imagePath = "D:\\2_Greek\\16_imagej\\MAX_K1555.tif"; 
+            String imagePath = ".\\sample_data\\Composite.tif"; 
             
             ImagePlus imp = IJ.openImage(imagePath);
             if (imp == null) imp = IJ.openImage();
