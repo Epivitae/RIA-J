@@ -35,12 +35,26 @@ It empowers researchers to perform **Background Subtraction**, **Dynamic Masking
 
 ## 📥 Installation
 
-1.  **Download**: Get the latest **`RIA_J-x.x.x.jar`** file from the [Releases](https://github.com/Epivitae/RIA-J/releases) page.
-2.  **Install**: Drag and drop the `.jar` file directly into the main toolbar of your Fiji/ImageJ.
-3.  **Restart**: Restart ImageJ.
-4.  **Run**: Find the plugin under `Plugins > RIA-J > Ratio Processor`.
+### Method 1: Via Fiji Update Site (Recommended ⭐)
+This is the easiest way to install RIA-J and keep it updated automatically.
 
-> **Note**: Alternatively, you can copy the jar file into your `Fiji.app/plugins/` folder manually.
+1.  Open **Fiji / ImageJ**.
+2.  Navigate to **Help > Update...**
+3.  Click the **Manage update sites** button.
+4.  Find **RIA-J** in the list and check the box.
+    * *If RIA-J is not in the list, click **Add Unlisted Site** and enter:*
+    * **Name**: `RIA-J`
+    * **URL**: `https://sites.imagej.net/RIA-J/`
+5.  Click **Apply and Close**, then click **Apply changes** in the main updater window.
+6.  Restart Fiji. You will find it under `Plugins > RIA-J (Ratio Processor)`.
+
+### Method 2: Manual Installation
+If you prefer to install a specific version manually:
+
+1.  **Download**: Get the latest **`RIA_J-x.x.x.jar`** file from the [Releases](https://github.com/Epivitae/RIA-J/releases) page.
+2.  **Copy**: Move the `.jar` file into your `Fiji.app/plugins/` folder.
+3.  **Restart**: Restart ImageJ.
+4.  **Run**: Access the tool via `Plugins > RIA-J (Ratio Processor)`.
 
 ## 📂 Sample Data
 
