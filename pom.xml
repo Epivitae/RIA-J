@@ -14,7 +14,7 @@
 
     <groupId>com.mybiolab</groupId>
     <artifactId>RIA_J</artifactId>
-    <version>0.5.1</version>
+    <version>0.5.2</version>
 
     <name>RIA-J</name>
     <description>Ratio Imaging Analyzer - Java Edition</description>

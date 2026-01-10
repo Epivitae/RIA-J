@@ -24,7 +24,7 @@ import java.net.URL;
 
 /**
  * PROJECT: RIA-J (Ratio Imaging Analyzer - Java Edition)
- * VERSION: v0.5.1 (Smart Workflow - No Internal Load)
+ * VERSION: v0.5.2 (Smart Workflow - No Internal Load)
  * AUTHOR: Kui Wang
  */
 public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemListener {
@@ -40,8 +40,8 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
     private static final Font FONT_SMALL  = new Font("Arial", Font.PLAIN, 10); 
 
     // --- Dimensions ---
-    private static final int COMPONENT_WIDTH = 210; 
-    private static final int SLIDER_HEIGHT   = 24;  
+    private static final int COMPONENT_WIDTH = 180; 
+    private static final int SLIDER_HEIGHT   = 18;  
 
     // --- Components ---
     // Input Section
@@ -106,7 +106,7 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
 
         // Refresh Button
         // Use a Refresh icon logic or just text "Initialize from ImageJ"
-        btnRefresh = new JButton("Import / Refresh Images");
+        btnRefresh = new JButton("Import / Refresh");
         btnRefresh.setFont(FONT_BOLD);
         btnRefresh.setForeground(new Color(0, 100, 0)); // Dark Green for safety
         btnRefresh.addActionListener(this);
