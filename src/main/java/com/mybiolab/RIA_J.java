@@ -27,18 +27,23 @@ import java.net.URL;
 
 /**
  * PROJECT: RIA-J (Ratio Imaging Analyzer - Java Edition)
- * VERSION: v0.15.0 (Professional Naming Convention)
+ * VERSION: v0.17.0 (Modern UI - Blue/Red Theme)
  * AUTHOR: Kui Wang
  */
 public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemListener, ImageListener {
 
-    // --- GUI Constants ---
-    private static final Color COLOR_THEME = new Color(0, 102, 204); 
-    private static final Font FONT_NORMAL = new Font("Arial", Font.PLAIN, 12); 
-    private static final Font FONT_BOLD   = new Font("Arial", Font.BOLD, 12);
-    private static final Font FONT_TITLE  = new Font("Arial", Font.BOLD, 12); 
-    private static final Font FONT_HEADER = new Font("Arial", Font.BOLD, 16); 
-    private static final Font FONT_SMALL  = new Font("Arial", Font.PLAIN, 10); 
+    // --- GUI Design Constants ---
+    // Extracting colors from the logo concept
+    private static final Color COLOR_THEME_BLUE = new Color(0, 102, 204); // Tech Blue
+    private static final Color COLOR_THEME_RED  = new Color(220, 50, 50); // Vibrant Red (Logo style)
+
+    // Fonts - Using SansSerif for a cleaner look
+    private static final Font FONT_NORMAL = new Font("SansSerif", Font.PLAIN, 12); 
+    private static final Font FONT_BOLD   = new Font("SansSerif", Font.BOLD, 12);
+    private static final Font FONT_TITLE  = new Font("SansSerif", Font.BOLD, 12); 
+    private static final Font FONT_HEADER = new Font("SansSerif", Font.BOLD, 16); 
+    private static final Font FONT_SMALL  = new Font("SansSerif", Font.PLAIN, 10); 
+    
     private static final int COMPONENT_WIDTH = 180; 
     private static final int SLIDER_HEIGHT   = 18;  
 
@@ -56,8 +61,8 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
     private ImagePlus[] availableImages;
     private ImagePlus imp1;           
     private ImagePlus imp2;           
-    private ImagePlus resultImp;      // 32-bit Raw Data
-    private ImagePlus impLegend;      // RGB Legend
+    private ImagePlus resultImp;      
+    private ImagePlus impLegend;      
     
     // --- State Flags ---
     private boolean isUpdatingUI = false;      
@@ -94,7 +99,6 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         
         for (int id : ids) {
             ImagePlus imp = WindowManager.getImage(id);
-            // Look for standard naming signature
             if (imp != null && imp.getTitle().startsWith("RIA-Result-")) {
                 resultImp = imp;
                 IJ.showStatus("Recovered: " + imp.getTitle());
@@ -145,13 +149,12 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
     // LOGIC BLOCK 2: Core Processing & Naming
     // ========================================================================
 
-    // Helper: Remove file extensions for cleaner names
     private String getCleanTitle(ImagePlus imp) {
-        String title = imp.getShortTitle(); // Returns title without extension usually
-        // Double check
+        String title = imp.getShortTitle(); 
         if (title.endsWith(".tif") || title.endsWith(".tiff") || title.endsWith(".nd2") || title.endsWith(".lsm")) {
             title = title.substring(0, title.lastIndexOf('.'));
         }
+        title = title.replaceAll("^(?i)C\\d+-", "");
         return title;
     }
 
@@ -218,10 +221,8 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
                 ImageProcessor ip2 = imp2.getStack().getProcessor(z).convertToFloat();
                 FloatProcessor fp = calculateRatioMath(ip1, ip2, valBg, valThresh);
                 
-                // --- NAMING LOGIC FOR SLICES ---
                 String label = imp1.getStack().getSliceLabel(z);
                 if(label == null || label.isEmpty()) {
-                    // No metadata? Use our format "Ratio-[n]"
                     label = "Ratio-" + z;
                 }
                 finalStack.addSlice(label, fp);
@@ -229,11 +230,8 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
 
             SwingUtilities.invokeLater(() -> {
                 if (resultImp == null) createInitialResult();
-                
                 resultImp.setStack(finalStack);
                 
-                // --- NAMING LOGIC FOR RESULT WINDOW ---
-                // Format: RIA-Result-[SourceTitle]
                 String sourceName = getCleanTitle(imp1);
                 resultImp.setTitle("RIA-Result-" + sourceName);
                 
@@ -253,7 +251,6 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         }
     }
     
-    // [Smart RGB Export with Naming]
     private void createRGBSnapshot() {
         if (resultImp == null) attemptRecoverResultImp();
         
@@ -274,22 +271,17 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         }
 
         ImagePlus snapshot;
-        
-        // Extract Base Name from Result Title
-        // e.g., "RIA-Result-C1-Cell" -> "C1-Cell"
         String currentTitle = resultImp.getTitle();
         String baseName = currentTitle.replace("RIA-Result-", "");
         
         if (doStack) {
             IJ.showStatus("Converting stack to RGB...");
             snapshot = resultImp.duplicate(); 
-            // Naming: RGB-Stack-[Source]
             snapshot.setTitle("RGB-Stack-" + baseName);
             snapshot.setDisplayRange(valMin, valMax);
             IJ.run(snapshot, "RGB Color", ""); 
         } else {
             ImageProcessor currentIp = resultImp.getProcessor().duplicate();
-            // Naming: RGB-Snap-[Source]
             snapshot = new ImagePlus("RGB-Snap-" + baseName, currentIp);
             snapshot.setDisplayRange(valMin, valMax);
             snapshot.setLut(resultImp.getProcessor().getLut());
@@ -398,7 +390,6 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
             java.util.List<ImagePlus> list = new java.util.ArrayList<>();
             for (int id : ids) {
                 ImagePlus imp = WindowManager.getImage(id);
-                // Filter out Results, Legends and RGB exports
                 String t = imp.getTitle();
                 if (imp != resultImp && imp != impLegend && !t.startsWith("RIA-Result") && !t.startsWith("RGB-")) {
                     list.add(imp);
@@ -425,13 +416,12 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         
         updateChannelReferences();
 
-        // [Direct Stack Workflow]
         if (imp1 != null && imp2 != null) {
              new Thread(() -> {
                 SwingUtilities.invokeLater(() -> {
                     btnApply.setEnabled(false); btnApply.setText("Processing...");
                 });
-                processEntireStack(); // AUTO START
+                processEntireStack(); 
                 SwingUtilities.invokeLater(() -> {
                     btnApply.setEnabled(true); btnApply.setText("<html><b>Apply to Stack</b></html>");
                 });
@@ -444,7 +434,6 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         if (resultImp != null) { resultImp.changes = false; resultImp.close(); }
         int width = imp1.getWidth(); int height = imp1.getHeight();
         FloatProcessor fp = new FloatProcessor(width, height);
-        // Initial Temp Title
         resultImp = new ImagePlus("RIA-Result-Temp", fp);
         resultImp.show();
     }
@@ -537,14 +526,14 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
     }
     
     // ========================================================================
-    // GUI Construction
+    // GUI Construction (Modernized)
     // ========================================================================
 
     private void buildGUI() {
         try { UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName()); } catch (Exception e) {}
         JPanel mainPanel = new JPanel();
         mainPanel.setLayout(new BoxLayout(mainPanel, BoxLayout.Y_AXIS));
-        mainPanel.setBorder(new EmptyBorder(5, 5, 5, 5)); 
+        mainPanel.setBorder(new EmptyBorder(8, 8, 8, 8)); // Little more breathing room
 
         mainPanel.add(createHeaderPanel());
         mainPanel.add(Box.createVerticalStrut(5)); 
@@ -563,6 +552,13 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         setVisible(true);
     }
     
+    private void styleButton(JButton btn, Color fgColor) {
+        btn.setFont(FONT_BOLD);
+        btn.setForeground(fgColor);
+        btn.setFocusPainted(false); // Modern: Remove dotted focus line
+        // btn.setBorder(BorderFactory.createLineBorder(fgColor)); // Optional: Custom border, but standard is often safer
+    }
+
     private JPanel createHeaderPanel() {
         JPanel pMain = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 0));
         URL imgURL = getClass().getResource("/images/RIA-J-128.png");
@@ -571,19 +567,26 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
             pMain.add(new JLabel(new ImageIcon(img)));
         }
         JPanel pText = new JPanel(); pText.setLayout(new BoxLayout(pText, BoxLayout.Y_AXIS));
-        JLabel lblTitle = new JLabel("RIA-J Controller"); lblTitle.setFont(FONT_HEADER); lblTitle.setForeground(COLOR_THEME);
+        JLabel lblTitle = new JLabel("RIA-J Controller"); 
+        lblTitle.setFont(FONT_HEADER); 
+        lblTitle.setForeground(COLOR_THEME_BLUE); // Use Theme Blue
         pText.add(lblTitle); pText.add(Box.createVerticalStrut(2)); 
-        JLabel lblCopy = new JLabel("© 2026 www.cns.ac.cn"); lblCopy.setFont(FONT_SMALL); lblCopy.setForeground(Color.GRAY);
+        JLabel lblCopy = new JLabel("© 2026 www.cns.ac.cn"); 
+        lblCopy.setFont(FONT_SMALL); 
+        lblCopy.setForeground(Color.GRAY);
         pText.add(lblCopy); pMain.add(pText);
         return pMain;
     }
+
     private JPanel createInputPanel() {
         JPanel p = createTitledPanel("Input Data");
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.fill = GridBagConstraints.HORIZONTAL; gbc.insets = new Insets(2, 2, 2, 2); gbc.weightx = 1.0;
+        
         btnRefresh = new JButton("Import / Refresh");
-        btnRefresh.setFont(FONT_BOLD); btnRefresh.setForeground(new Color(0, 100, 0));
+        styleButton(btnRefresh, COLOR_THEME_BLUE); // THEME BLUE
         btnRefresh.addActionListener(this);
+        
         gbc.gridx = 0; gbc.gridy = 0; gbc.gridwidth = 2; p.add(btnRefresh, gbc);
         gbc.gridwidth = 1;
         JLabel lblNum = new JLabel("Numerator:"); lblNum.setFont(FONT_NORMAL);
@@ -596,6 +599,7 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         gbc.gridx = 1; gbc.gridy = 2; p.add(comboDen, gbc);
         return p;
     }
+
     private JPanel createCalcPanel() {
         JPanel p = createTitledPanel("Calculation Parameters");
         GridBagConstraints gbc = new GridBagConstraints();
@@ -614,6 +618,7 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         gbc.gridx = 0; gbc.gridy = 3; p.add(sliderThresh, gbc);
         return p;
     }
+
     private JPanel createVisPanel() {
         JPanel p = createTitledPanel("Visualization");
         GridBagConstraints gbc = new GridBagConstraints();
@@ -640,6 +645,7 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         p.add(pLut, gbc);
         return p;
     }
+
     private JPanel createActionPanel() {
         JPanel p = createTitledPanel("Actions");
         p.setLayout(new BoxLayout(p, BoxLayout.Y_AXIS));
@@ -647,40 +653,48 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         // Row 1: Legend
         JPanel pBarBtns = new JPanel(new GridLayout(1, 2, 5, 0)); 
         pBarBtns.setBorder(new EmptyBorder(0, 2, 5, 2)); 
-        btnBarShow = new JButton("Show Legend"); btnBarShow.setFont(FONT_NORMAL); btnBarShow.addActionListener(this);
-        btnBarClose = new JButton("Close Legend"); btnBarClose.setFont(FONT_NORMAL); btnBarClose.addActionListener(this);
+        
+        btnBarShow = new JButton("Show Legend"); 
+        btnBarShow.setFont(FONT_NORMAL); btnBarShow.setFocusPainted(false);
+        btnBarShow.addActionListener(this);
+        
+        btnBarClose = new JButton("Close Legend"); 
+        btnBarClose.setFont(FONT_NORMAL); btnBarClose.setFocusPainted(false);
+        btnBarClose.addActionListener(this);
+        
         pBarBtns.add(btnBarShow); pBarBtns.add(btnBarClose);
         p.add(pBarBtns);
 
-        // Row 2: Snapshot [COLOR FIXED: Default Black]
-        btnSnapshot = new JButton("Save as RGB (Publication)");
-        btnSnapshot.setFont(FONT_BOLD);
-        // Default color is black, no need to set
-        btnSnapshot.setAlignmentX(Component.CENTER_ALIGNMENT);
-        btnSnapshot.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
+        // Row 2: Snapshot [UPDATED: Blue, Short Text]
+        btnSnapshot = new JButton("Save as RGB");
+        styleButton(btnSnapshot, COLOR_THEME_BLUE); // THEME BLUE
         btnSnapshot.addActionListener(this);
         p.add(Box.createVerticalStrut(5));
         p.add(btnSnapshot);
 
-        // Row 3: Apply [COLOR FIXED: Soft Brick Red]
+        // Row 3: Apply [UPDATED: Theme Red]
         btnApply = new JButton("<html><b>Apply to Stack</b></html>");
-        btnApply.setFont(FONT_BOLD); 
-        btnApply.setForeground(new Color(160, 50, 50)); // Soft Brick Red
-        btnApply.setAlignmentX(Component.CENTER_ALIGNMENT);
-        btnApply.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40)); 
+        styleButton(btnApply, COLOR_THEME_RED); // THEME RED
         btnApply.setPreferredSize(new Dimension(COMPONENT_WIDTH, 35)); 
         btnApply.addActionListener(this);
         p.add(Box.createVerticalStrut(5));
         p.add(btnApply);
         return p;
     }
+
     private JPanel createTitledPanel(String title) {
         JPanel p = new JPanel(new GridBagLayout());
-        TitledBorder border = BorderFactory.createTitledBorder(BorderFactory.createEtchedBorder(), title);
-        border.setTitleFont(FONT_TITLE); border.setTitleColor(COLOR_THEME);
-        p.setBorder(border); return p;
+        // Use Theme Blue for borders
+        TitledBorder border = BorderFactory.createTitledBorder(
+                BorderFactory.createLineBorder(new Color(200, 200, 200)), title); // Cleaner line border
+        border.setTitleFont(FONT_TITLE); 
+        border.setTitleColor(COLOR_THEME_BLUE); // THEME BLUE
+        p.setBorder(border); 
+        return p;
     }
+
     private void setupSlider(JSlider slider) { slider.setPreferredSize(new Dimension(COMPONENT_WIDTH, SLIDER_HEIGHT)); }
+    
     private JPanel createLabelSpinnerPanel(String text, double min, double max, double current, boolean isDouble) {
         JPanel p = new JPanel(new BorderLayout());
         JLabel lbl = new JLabel(text); lbl.setFont(FONT_NORMAL);
