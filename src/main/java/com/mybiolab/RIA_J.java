@@ -27,7 +27,7 @@ import java.net.URL;
 
 /**
  * PROJECT: RIA-J (Ratio Imaging Analyzer - Java Edition)
- * VERSION: v0.14.0 (Direct Stack Workflow & UI Refinement)
+ * VERSION: v0.15.0 (Professional Naming Convention)
  * AUTHOR: Kui Wang
  */
 public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemListener, ImageListener {
@@ -94,9 +94,10 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         
         for (int id : ids) {
             ImagePlus imp = WindowManager.getImage(id);
-            if (imp != null && imp.getTitle().startsWith("RIA-J Result")) {
+            // Look for standard naming signature
+            if (imp != null && imp.getTitle().startsWith("RIA-Result-")) {
                 resultImp = imp;
-                IJ.showStatus("Recovered connection to: " + imp.getTitle());
+                IJ.showStatus("Recovered: " + imp.getTitle());
                 isUpdatingUI = true;
                 valMin = resultImp.getDisplayRangeMin();
                 valMax = resultImp.getDisplayRangeMax();
@@ -126,7 +127,6 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
             double curDisplayMin = imp.getDisplayRangeMin();
             double curDisplayMax = imp.getDisplayRangeMax();
 
-            // Two-way sync: ImageJ B&C -> Plugin UI
             if (Math.abs(curDisplayMin - valMin) > 0.001 || Math.abs(curDisplayMax - valMax) > 0.001) {
                 isUpdatingUI = true; 
                 valMin = curDisplayMin;
@@ -142,13 +142,22 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
     }
 
     // ========================================================================
-    // LOGIC BLOCK 2: Core Processing
+    // LOGIC BLOCK 2: Core Processing & Naming
     // ========================================================================
+
+    // Helper: Remove file extensions for cleaner names
+    private String getCleanTitle(ImagePlus imp) {
+        String title = imp.getShortTitle(); // Returns title without extension usually
+        // Double check
+        if (title.endsWith(".tif") || title.endsWith(".tiff") || title.endsWith(".nd2") || title.endsWith(".lsm")) {
+            title = title.substring(0, title.lastIndexOf('.'));
+        }
+        return title;
+    }
 
     private void updatePreview(boolean reCalculateMath) {
         if (resultImp == null || imp1 == null || imp2 == null) return;
         
-        // 1. Math Step (Only current slice)
         if (reCalculateMath) {
             int currentZ = resultImp.getCurrentSlice();
             if (currentZ > imp1.getStackSize()) currentZ = 1;
@@ -158,18 +167,14 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
             
             FloatProcessor fpResult = calculateRatioMath(ip1, ip2, valBg, valThresh);
             
-            // [IMPORTANT] Stack Preservation Logic
-            // 如果结果已经是 Stack，我们只更新当前这一帧，不要把整个 Stack 销毁成单帧
             if (resultImp.getStackSize() > 1) {
                 resultImp.getStack().setProcessor(fpResult, currentZ);
-                // 触发重绘，但不触发 ImageUpdated 导致的死循环（因为我们也没改 MinMax）
                 resultImp.updateAndDraw(); 
             } else {
                 resultImp.setProcessor(fpResult);
             }
         }
 
-        // 2. Display Step
         resultImp.setDisplayRange(valMin, valMax); 
         String lut = (String) comboLUT.getSelectedItem();
         IJ.run(resultImp, lut != null ? lut : "Fire", ""); 
@@ -212,8 +217,13 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
                 ImageProcessor ip1 = imp1.getStack().getProcessor(z).convertToFloat();
                 ImageProcessor ip2 = imp2.getStack().getProcessor(z).convertToFloat();
                 FloatProcessor fp = calculateRatioMath(ip1, ip2, valBg, valThresh);
+                
+                // --- NAMING LOGIC FOR SLICES ---
                 String label = imp1.getStack().getSliceLabel(z);
-                if(label == null) label = "Ratio " + z;
+                if(label == null || label.isEmpty()) {
+                    // No metadata? Use our format "Ratio-[n]"
+                    label = "Ratio-" + z;
+                }
                 finalStack.addSlice(label, fp);
             }
 
@@ -221,7 +231,11 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
                 if (resultImp == null) createInitialResult();
                 
                 resultImp.setStack(finalStack);
-                resultImp.setTitle("RIA-J Result (Final)");
+                
+                // --- NAMING LOGIC FOR RESULT WINDOW ---
+                // Format: RIA-Result-[SourceTitle]
+                String sourceName = getCleanTitle(imp1);
+                resultImp.setTitle("RIA-Result-" + sourceName);
                 
                 resultImp.setDisplayRange(valMin, valMax);
                 String lut = (String) comboLUT.getSelectedItem();
@@ -239,7 +253,7 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         }
     }
     
-    // [Smart RGB Export]
+    // [Smart RGB Export with Naming]
     private void createRGBSnapshot() {
         if (resultImp == null) attemptRecoverResultImp();
         
@@ -249,7 +263,6 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         }
 
         boolean doStack = false;
-        
         if (resultImp.getStackSize() > 1) {
             GenericDialog gd = new GenericDialog("Export Options");
             gd.addMessage("You are processing a Multi-frame Stack.");
@@ -262,15 +275,22 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
 
         ImagePlus snapshot;
         
+        // Extract Base Name from Result Title
+        // e.g., "RIA-Result-C1-Cell" -> "C1-Cell"
+        String currentTitle = resultImp.getTitle();
+        String baseName = currentTitle.replace("RIA-Result-", "");
+        
         if (doStack) {
             IJ.showStatus("Converting stack to RGB...");
             snapshot = resultImp.duplicate(); 
-            snapshot.setTitle("RGB-Stack-" + resultImp.getTitle());
+            // Naming: RGB-Stack-[Source]
+            snapshot.setTitle("RGB-Stack-" + baseName);
             snapshot.setDisplayRange(valMin, valMax);
             IJ.run(snapshot, "RGB Color", ""); 
         } else {
             ImageProcessor currentIp = resultImp.getProcessor().duplicate();
-            snapshot = new ImagePlus("RGB-Snap-" + resultImp.getTitle(), currentIp);
+            // Naming: RGB-Snap-[Source]
+            snapshot = new ImagePlus("RGB-Snap-" + baseName, currentIp);
             snapshot.setDisplayRange(valMin, valMax);
             snapshot.setLut(resultImp.getProcessor().getLut());
             IJ.run(snapshot, "RGB Color", "");
@@ -294,8 +314,8 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         else if (src == comboNum || src == comboDen) {
             if (!isUpdatingUI) { 
                 updateChannelReferences(); 
-                createInitialResult(); // Reset view
-                updatePreview(true);   // Show single slice preview if user changes channels manually
+                createInitialResult(); 
+                updatePreview(true);   
             }
         } 
         else if (src == btnApply) {
@@ -378,7 +398,9 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
             java.util.List<ImagePlus> list = new java.util.ArrayList<>();
             for (int id : ids) {
                 ImagePlus imp = WindowManager.getImage(id);
-                if (imp != resultImp && imp != impLegend && !imp.getTitle().contains("RIA-J") && !imp.getTitle().startsWith("RGB-")) {
+                // Filter out Results, Legends and RGB exports
+                String t = imp.getTitle();
+                if (imp != resultImp && imp != impLegend && !t.startsWith("RIA-Result") && !t.startsWith("RGB-")) {
                     list.add(imp);
                 }
             }
@@ -403,14 +425,13 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         
         updateChannelReferences();
 
-        // [MODIFIED LOGIC] Automatically trigger Stack Processing on Import
-        // This gives the user the "Direct Stack" feeling immediately.
+        // [Direct Stack Workflow]
         if (imp1 != null && imp2 != null) {
              new Thread(() -> {
                 SwingUtilities.invokeLater(() -> {
                     btnApply.setEnabled(false); btnApply.setText("Processing...");
                 });
-                processEntireStack(); // AUTO PROCESS!
+                processEntireStack(); // AUTO START
                 SwingUtilities.invokeLater(() -> {
                     btnApply.setEnabled(true); btnApply.setText("<html><b>Apply to Stack</b></html>");
                 });
@@ -423,7 +444,8 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         if (resultImp != null) { resultImp.changes = false; resultImp.close(); }
         int width = imp1.getWidth(); int height = imp1.getHeight();
         FloatProcessor fp = new FloatProcessor(width, height);
-        resultImp = new ImagePlus("RIA-J Result", fp);
+        // Initial Temp Title
+        resultImp = new ImagePlus("RIA-Result-Temp", fp);
         resultImp.show();
     }
     
@@ -630,20 +652,20 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         pBarBtns.add(btnBarShow); pBarBtns.add(btnBarClose);
         p.add(pBarBtns);
 
-        // Row 2: Snapshot [UPDATED: Black Text]
-        btnSnapshot = new JButton("Save as RGB");
+        // Row 2: Snapshot [COLOR FIXED: Default Black]
+        btnSnapshot = new JButton("Save as RGB (Publication)");
         btnSnapshot.setFont(FONT_BOLD);
-        // btnSnapshot.setForeground(Color.BLACK); // Default is black, so no need to set
+        // Default color is black, no need to set
         btnSnapshot.setAlignmentX(Component.CENTER_ALIGNMENT);
         btnSnapshot.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
         btnSnapshot.addActionListener(this);
         p.add(Box.createVerticalStrut(5));
         p.add(btnSnapshot);
 
-        // Row 3: Apply [UPDATED: Softer Red]
+        // Row 3: Apply [COLOR FIXED: Soft Brick Red]
         btnApply = new JButton("<html><b>Apply to Stack</b></html>");
         btnApply.setFont(FONT_BOLD); 
-        btnApply.setForeground(new Color(160, 50, 50)); // Soft Brick Red (Not too saturated)
+        btnApply.setForeground(new Color(160, 50, 50)); // Soft Brick Red
         btnApply.setAlignmentX(Component.CENTER_ALIGNMENT);
         btnApply.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40)); 
         btnApply.setPreferredSize(new Dimension(COMPONENT_WIDTH, 35)); 
