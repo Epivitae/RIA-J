@@ -27,7 +27,7 @@ import java.net.URL;
 
 /**
  * PROJECT: RIA-J (Ratio Imaging Analyzer - Java Edition)
- * VERSION: v0.12.0 (Auto-Recovery & Smart RGB Stack)
+ * VERSION: v0.13.0 (Legend Border Restored)
  * AUTHOR: Kui Wang
  */
 public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemListener, ImageListener {
@@ -86,23 +86,17 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
     // LOGIC BLOCK 1: Auto-Recovery & Listeners
     // ========================================================================
     
-    /**
-     * [CORE FIX] Try to find an orphaned Result window if we lost the reference
-     * (e.g. after plugin restart).
-     */
     private void attemptRecoverResultImp() {
-        if (resultImp != null && resultImp.isVisible()) return; // Already good
+        if (resultImp != null && resultImp.isVisible()) return; 
 
         int[] ids = WindowManager.getIDList();
         if (ids == null) return;
         
         for (int id : ids) {
             ImagePlus imp = WindowManager.getImage(id);
-            // Look for window title starting with our signature
             if (imp != null && imp.getTitle().startsWith("RIA-J Result")) {
                 resultImp = imp;
                 IJ.showStatus("Recovered connection to: " + imp.getTitle());
-                // Sync UI to this recovered image
                 isUpdatingUI = true;
                 valMin = resultImp.getDisplayRangeMin();
                 valMax = resultImp.getDisplayRangeMax();
@@ -236,7 +230,6 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
     
     // [UPDATED] Smart RGB Export with Auto-Recovery
     private void createRGBSnapshot() {
-        // 1. Safety Check: Try to recover window if null
         if (resultImp == null) attemptRecoverResultImp();
         
         if (resultImp == null) {
@@ -246,7 +239,6 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
 
         boolean doStack = false;
         
-        // 2. Ask user logic
         if (resultImp.getStackSize() > 1) {
             GenericDialog gd = new GenericDialog("Export Options");
             gd.addMessage("You are processing a Multi-frame Stack.");
@@ -260,14 +252,12 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         ImagePlus snapshot;
         
         if (doStack) {
-            // A. Full Stack Export
             IJ.showStatus("Converting stack to RGB...");
             snapshot = resultImp.duplicate(); 
             snapshot.setTitle("RGB-Stack-" + resultImp.getTitle());
             snapshot.setDisplayRange(valMin, valMax);
             IJ.run(snapshot, "RGB Color", ""); 
         } else {
-            // B. Single Frame Snapshot
             ImageProcessor currentIp = resultImp.getProcessor().duplicate();
             snapshot = new ImagePlus("RGB-Snap-" + resultImp.getTitle(), currentIp);
             snapshot.setDisplayRange(valMin, valMax);
@@ -309,7 +299,7 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
             }).start();
         } 
         else if (src == btnBarShow) {
-            if (resultImp == null) attemptRecoverResultImp(); // Auto-recover
+            if (resultImp == null) attemptRecoverResultImp(); 
             if (resultImp != null) {
                 if (!resultImp.isVisible()) resultImp.show(); 
                 updateLegend();
@@ -363,7 +353,6 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
     // ========================================================================
 
     private void refreshImageList() {
-        // 1. Find Inputs
         ImagePlus activeImp = IJ.getImage(); 
         if (activeImp == null && WindowManager.getImageCount() == 0) {
             IJ.error("RIA-J", "No images found!"); return;
@@ -378,7 +367,6 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
             java.util.List<ImagePlus> list = new java.util.ArrayList<>();
             for (int id : ids) {
                 ImagePlus imp = WindowManager.getImage(id);
-                // Filter logic
                 if (imp != resultImp && imp != impLegend && !imp.getTitle().contains("RIA-J") && !imp.getTitle().startsWith("RGB-")) {
                     list.add(imp);
                 }
@@ -386,10 +374,8 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
             availableImages = list.toArray(new ImagePlus[0]);
         }
         
-        // 2. Try to Recover Result (Don't destroy user's work if it exists)
         if (resultImp == null) attemptRecoverResultImp();
 
-        // 3. Update Dropdowns
         isUpdatingUI = true;
         comboNum.removeAllItems(); comboDen.removeAllItems();
         if (availableImages != null && availableImages.length > 0) {
@@ -406,12 +392,9 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         
         updateChannelReferences();
 
-        // 4. Smart Init
         if (resultImp != null) {
-            // If we recovered a window, KEEP IT. Just sync params.
             IJ.showStatus("Connected to existing Result.");
         } else {
-            // No result found, start fresh.
             createInitialResult();
             updatePreview(true);
             IJ.showStatus("Ready.");
@@ -450,7 +433,7 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
     }
 
     // ========================================================================
-    // LOGIC BLOCK 5: Visualization (Legend - AI Friendly)
+    // LOGIC BLOCK 5: Visualization (Legend - Border Restored)
     // ========================================================================
 
     private void updateLegend() {
@@ -471,17 +454,24 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         ImageProcessor ipLegendCol = ipBar.convertToRGB();
 
         ColorProcessor ipFinal = new ColorProcessor(totalW, totalH);
-        ipFinal.setColor(Color.WHITE); // Pure White for AI
+        ipFinal.setColor(Color.WHITE); // Pure White Background
         ipFinal.fill();
         ipFinal.insert(ipLegendCol, padLeft, padTop);
         
+        // [RESTORED] Black Border around the color bar
+        ipFinal.setColor(Color.BLACK);
+        ipFinal.drawRect(padLeft - 1, padTop - 1, barW + 1, barH + 1);
+
         ipFinal.setColor(Color.BLACK);
         ipFinal.setFont(new Font("SansSerif", Font.PLAIN, 12));
         ipFinal.setAntialiasedText(true);
         int steps = 5;
         for (int i = 0; i <= steps; i++) {
             int yPos = padTop + barH - (int)((double)i / steps * barH);
-            ipFinal.drawLine(padLeft + barW, yPos, padLeft + barW + 3, yPos);
+            
+            // Tick mark
+            ipFinal.drawLine(padLeft + barW + 1, yPos, padLeft + barW + 4, yPos);
+            
             double val = valMin + (valMax - valMin) * i / steps;
             ipFinal.drawString(String.format("%.2f", val), padLeft + barW + tickGap, yPos + 5);
         }
