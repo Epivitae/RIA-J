@@ -28,7 +28,7 @@ import java.util.ArrayList;
 
 /**
  * PROJECT: RIA-J (Ratio Imaging Analyzer - Java Edition)
- * VERSION: v1.0.10 (Smart Naming)
+ * VERSION: v1.1.0 (Single Window Interaction & Instant Preview)
  * AUTHOR: Kui Wang
  */
 public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemListener, ImageListener {
@@ -62,7 +62,7 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
     private ImagePlus[] availableImages;
     private ImagePlus imp1;           
     private ImagePlus imp2;           
-    private ImagePlus resultImp;      
+    private ImagePlus resultImp; // The SINGLE result window instance
     private ImagePlus impLegend;      
     
     // --- State Flags ---
@@ -89,21 +89,41 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
     }
 
     // ========================================================================
-    // LOGIC BLOCK 1: Auto-Recovery & Listeners
+    // LOGIC BLOCK 1: Auto-Recovery & Window Management (The Core of v1.1.0)
     // ========================================================================
     
-    private void attemptRecoverResultImp() {
-        if (resultImp != null && resultImp.isVisible()) return; 
+    // Ensure we have a valid window to draw into. Do NOT create duplicates.
+    private void ensureResultImpExists() {
+        // 1. If we already hold a valid reference, good.
+        if (resultImp != null && resultImp.isVisible()) return;
+        
+        // 2. Try to recover a loose window with "RIA-" prefix
+        attemptRecoverResultImp();
+        if (resultImp != null) return;
 
+        // 3. Create NEW only if absolutely necessary
+        if (imp1 == null) return;
+        int width = imp1.getWidth(); 
+        int height = imp1.getHeight();
+        FloatProcessor fp = new FloatProcessor(width, height);
+        
+        // Initial dummy title, will be updated immediately
+        resultImp = new ImagePlus(generateResultTitle(), fp);
+        resultImp.show();
+    }
+
+    private void attemptRecoverResultImp() {
         int[] ids = WindowManager.getIDList();
         if (ids == null) return;
         
         for (int id : ids) {
             ImagePlus imp = WindowManager.getImage(id);
+            // Only grab windows that look like our results
             if (imp != null && imp.getTitle().startsWith("RIA-")) {
                 resultImp = imp;
                 IJ.showStatus("Recovered: " + imp.getTitle());
                 isUpdatingUI = true;
+                // Sync UI to image state
                 valMin = resultImp.getDisplayRangeMin();
                 valMax = resultImp.getDisplayRangeMax();
                 spinMin.setValue(valMin);
@@ -147,36 +167,30 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
     }
 
     // ========================================================================
-    // LOGIC BLOCK 2: Core Processing & Naming
+    // LOGIC BLOCK 2: Naming & Processing
     // ========================================================================
 
-    // [NEW] Extract "C1", "C2" or "Red" from title
     private String getChannelTag(ImagePlus imp) {
         if (imp == null) return "?";
         String t = imp.getTitle();
-        // Match C1-, C2- pattern standard in ImageJ split
         if (t.matches("^(?i)C\\d+-.*")) {
             return t.substring(0, t.indexOf('-'));
         }
-        // Fallback: If filename is "Red.tif", use "Red"
         if (t.contains(".")) t = t.substring(0, t.lastIndexOf('.'));
-        // If name is very long, truncate
         if (t.length() > 6) return t.substring(0, 4);
         return t;
     }
 
-    // [NEW] Extract "Composite" from "C1-Composite.tif"
     private String getBaseName(ImagePlus imp) {
         if (imp == null) return "Image";
         String t = imp.getTitle();
         if (t.endsWith(".tif") || t.endsWith(".tiff") || t.endsWith(".nd2") || t.endsWith(".lsm")) {
             t = t.substring(0, t.lastIndexOf('.'));
         }
-        // Remove C1- prefix if present
         return t.replaceAll("^(?i)C\\d+-", "");
     }
 
-    // [NEW] Centralized Title Generator: RIA-C1_C2-Result-BaseName
+    // Smart Title Generation
     private String generateResultTitle() {
         if (imp1 == null || imp2 == null) return "RIA-Result";
         String t1 = getChannelTag(imp1);
@@ -185,34 +199,50 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         return "RIA-" + t1 + "_" + t2 + "-Result-" + base;
     }
 
+    // [MODIFIED] Preview only updates the CURRENT slice in-place
     private void updatePreview(boolean reCalculateMath) {
-        if (resultImp == null || imp1 == null || imp2 == null) return;
-        
+        if (imp1 == null || imp2 == null) return;
         if (imp1 == imp2) {
             IJ.showStatus("Warning: Numerator and Denominator are the same!");
             return;
         }
+        
+        ensureResultImpExists(); // Make sure we have a window
 
         if (reCalculateMath) {
+            // Logic: Use resultImp's current Z, or 1 if it's a new single slice
             int currentZ = resultImp.getCurrentSlice();
-            if (currentZ > imp1.getStackSize()) currentZ = 1;
             
-            ImageProcessor ip1 = imp1.getStack().getProcessor(currentZ).convertToFloat();
-            ImageProcessor ip2 = imp2.getStack().getProcessor(currentZ).convertToFloat();
+            // Handle edge case where result is single slice but inputs are stack
+            int inputZ = currentZ; 
+            if (currentZ > imp1.getStackSize()) inputZ = 1; 
+            
+            ImageProcessor ip1 = imp1.getStack().getProcessor(inputZ).convertToFloat();
+            ImageProcessor ip2 = imp2.getStack().getProcessor(inputZ).convertToFloat();
             
             FloatProcessor fpResult = calculateRatioMath(ip1, ip2, valBg, valThresh);
             
+            // In-place update of the processor
             if (resultImp.getStackSize() > 1) {
+                // If it's a stack, just update the visible slice (preview mode)
                 resultImp.getStack().setProcessor(fpResult, currentZ);
             } else {
+                // If it's a single image, set the processor
                 resultImp.setProcessor(fpResult);
             }
         }
 
+        // Apply visual settings in-place
         String lut = (String) comboLUT.getSelectedItem();
-        IJ.run(resultImp, lut != null ? lut : "Fire", ""); 
+        if (lut != null && !lut.startsWith("---")) {
+             IJ.run(resultImp, lut, ""); 
+        }
         
         resultImp.setDisplayRange(valMin, valMax); 
+        
+        // [KEY] Update Title Live (e.g. after Swap)
+        resultImp.setTitle(generateResultTitle());
+        
         resultImp.updateAndDraw();
         
         if (isValidLegendOpen()) updateLegend();
@@ -236,6 +266,7 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         return new FloatProcessor(width, height, pRes);
     }
 
+    // [MODIFIED] Full stack calculation (Heavy Operation)
     private void processEntireStack() {
         if (imp1 == null || imp2 == null || imp1 == imp2) return;
 
@@ -261,21 +292,20 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
             }
 
             SwingUtilities.invokeLater(() -> {
-                if (resultImp == null) createInitialResult();
+                ensureResultImpExists();
+                // [KEY] Replace the stack IN-PLACE
                 resultImp.setStack(finalStack);
-                
-                // [NEW] Use Smart Naming
                 resultImp.setTitle(generateResultTitle());
                 
                 String lut = (String) comboLUT.getSelectedItem();
-                IJ.run(resultImp, lut != null ? lut : "Fire", ""); 
-                resultImp.setDisplayRange(valMin, valMax);
+                if (lut != null && !lut.startsWith("---")) IJ.run(resultImp, lut, ""); 
                 
-                resultImp.setSlice(1);
+                resultImp.setDisplayRange(valMin, valMax);
+                resultImp.setSlice(1); // Go to start
                 resultImp.updateAndDraw();
                 
                 if (isValidLegendOpen()) updateLegend();
-                IJ.showStatus("Finished!");
+                IJ.showStatus("Full stack recalculated!");
             });
             
         } catch (Exception e) {
@@ -292,27 +322,22 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         boolean doStack = false;
         if (resultImp.getStackSize() > 1) {
             GenericDialog gd = new GenericDialog("Export Options");
-            gd.addMessage("You are processing a Stack.");
-            gd.addCheckbox("Convert Entire Stack (Movie)", true);
+            gd.addMessage("Export RGB Stack (Movie)?");
+            gd.addCheckbox("Convert All Frames", true);
             gd.setOKLabel("Export RGB");
             gd.showDialog();
             if (gd.wasCanceled()) return;
             doStack = gd.getNextBoolean();
         }
 
-        // [NEW] Smart Naming for RGB
-        // Current Title: RIA-C1_C2-Result-Composite
-        // RGB Title:     RIA-RGB-C1_C2-Result-Composite
         String currentTitle = resultImp.getTitle();
         String newTitle = currentTitle.replace("RIA-", "RIA-RGB-");
-        if (doStack && !newTitle.contains("Stack")) {
-             newTitle = newTitle.replace("RIA-RGB-", "RIA-RGB-Stack-");
-        }
 
         if (doStack) {
             IJ.showStatus("Synchronizing stack...");
             isBatchProcessing = true;
             try {
+                // Ensure math is up to date for RGB conversion
                 int nSlices = imp1.getStackSize();
                 ImageStack stack = resultImp.getStack();
                 for (int z = 1; z <= nSlices; z++) {
@@ -352,7 +377,7 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         Object src = e.getSource();
         
         if (src == btnRefresh) {
-            refreshImageList();
+            refreshImageList(); // Only refreshes dropdowns, no processing
         } 
         else if (src == btnSwap) { 
             if (comboNum.getItemCount() > 1) {
@@ -364,32 +389,23 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
                 updateChannelReferences();
                 isUpdatingUI = false;
                 
+                // [SWAP = PREVIEW] Only update current frame, fast response
                 if (imp1 != null && imp2 != null) {
-                    IJ.showStatus("Swapped channels. Updating...");
-                    
-                    if (imp1.getStackSize() > 1) {
-                        new Thread(() -> processEntireStack()).start();
-                    } else {
-                        // For single images, we must update the name too
-                        if (resultImp != null) resultImp.setTitle(generateResultTitle());
-                        createInitialResult();
-                        updatePreview(true);
-                    }
+                    IJ.showStatus("Swapped. Showing preview...");
+                    updatePreview(true);
                 }
             }
         }
         else if (src == btnRecalc) { 
              new Thread(() -> {
                 IJ.showStatus("Recalculating entire stack...");
-                processEntireStack(); 
+                processEntireStack(); // [RECALC = FULL STACK]
             }).start();
         }
         else if (src == comboNum || src == comboDen) {
             if (!isUpdatingUI) { 
                 updateChannelReferences(); 
-                createInitialResult();
-                // [NEW] Update title immediately on selection change
-                if (resultImp != null) resultImp.setTitle(generateResultTitle());
+                // [CHANGE = PREVIEW]
                 updatePreview(true);   
             }
         } 
@@ -423,6 +439,7 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
             }
             updateParamsFromUI();
             boolean isMathChange = (slider == sliderBg || slider == sliderThresh);
+            // Sliders also only trigger Preview update
             updatePreview(isMathChange);
             isUpdatingUI = false;     
         };
@@ -481,7 +498,7 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         }
 
         if (list.isEmpty()) {
-            IJ.error("RIA-J", "No images found! Please open a composite or single images."); 
+            IJ.error("RIA-J", "No images found!"); 
             return;
         }
 
@@ -508,19 +525,14 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         isUpdatingUI = false;
         
         updateChannelReferences();
-
-        if (imp1 != null && imp2 != null && imp1 != imp2) {
-             new Thread(() -> {
-                processEntireStack(); 
-            }).start();
-        }
+        
+        // [REMOVED] Auto-start thread. User must adjust and click Recalc.
     }
     
     private String[] buildLutList() {
         String[] preferred = {
             "Fire", "Viridis", "Magma", "Ice", "Grays", "Green Fire Blue", "HiLo", "Jet"
         };
-        
         String[] installed = IJ.getLuts(); 
         if (installed == null) installed = new String[0];
         
@@ -531,27 +543,13 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
             finalList.add(s);
             added.add(s.toLowerCase());
         }
-        
         finalList.add("--------------------");
-        
         for (String s : installed) {
             if (!added.contains(s.toLowerCase())) {
                 finalList.add(s);
             }
         }
         return finalList.toArray(new String[0]);
-    }
-
-    private void createInitialResult() {
-        if (imp1 == null) return;
-        if (resultImp != null) { resultImp.changes = false; resultImp.close(); }
-        int width = imp1.getWidth(); int height = imp1.getHeight();
-        FloatProcessor fp = new FloatProcessor(width, height);
-        
-        // [NEW] Use generated title
-        String title = generateResultTitle();
-        resultImp = new ImagePlus(title, fp);
-        resultImp.show();
     }
     
     private void updateChannelReferences() {
@@ -698,6 +696,7 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.fill = GridBagConstraints.HORIZONTAL; gbc.insets = new Insets(2, 2, 2, 2); gbc.weightx = 1.0;
         
+        // Row 1: [Import] [Swap]
         btnRefresh = new JButton("Import / Refresh");
         styleButton(btnRefresh, COLOR_THEME_BLUE); 
         btnRefresh.addActionListener(this);
@@ -801,7 +800,7 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         pExportBtns.setBorder(new EmptyBorder(0, 2, 0, 2));
         
         btnRecalc = new JButton("Recalculate Stack"); 
-        styleButton(btnRecalc, COLOR_THEME_BLUE); 
+        styleButton(btnRecalc, COLOR_THEME_BLUE); // Unified Blue
         btnRecalc.addActionListener(this);
         
         btnSnapshot = new JButton("Save as RGB");
