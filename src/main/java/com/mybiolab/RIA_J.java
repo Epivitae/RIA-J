@@ -89,6 +89,9 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         }
     }
 
+
+
+    
     // ========================================================================
     // LOGIC BLOCK 1: Window Management
     // ========================================================================
