@@ -28,7 +28,7 @@ import java.util.ArrayList;
 
 /**
  * PROJECT: RIA-J (Ratio Imaging Analyzer - Java Edition)
- * VERSION: v1.1.0 (Single Window Interaction & Instant Preview)
+ * VERSION: v1.1.1 (UI Fix: Fixed Width & Layout Stability)
  * AUTHOR: Kui Wang
  */
 public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemListener, ImageListener {
@@ -44,8 +44,12 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
     private static final Font FONT_HEADER = new Font("SansSerif", Font.BOLD, 16); 
     private static final Font FONT_SMALL  = new Font("SansSerif", Font.PLAIN, 10); 
     
-    private static final int COMPONENT_WIDTH = 100; 
+    // [UI FIX 1] Increased component width to force a wider, consistent window
+    private static final int COMPONENT_WIDTH = 180; 
     private static final int SLIDER_HEIGHT   = 15;  
+    
+    // [UI FIX 2] Fixed Main Panel Width
+    private static final int MAIN_PANEL_WIDTH = 340;
 
     // --- Components ---
     private JButton btnRefresh; 
@@ -62,7 +66,7 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
     private ImagePlus[] availableImages;
     private ImagePlus imp1;           
     private ImagePlus imp2;           
-    private ImagePlus resultImp; // The SINGLE result window instance
+    private ImagePlus resultImp;      
     private ImagePlus impLegend;      
     
     // --- State Flags ---
@@ -89,25 +93,18 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
     }
 
     // ========================================================================
-    // LOGIC BLOCK 1: Auto-Recovery & Window Management (The Core of v1.1.0)
+    // LOGIC BLOCK 1: Auto-Recovery & Window Management
     // ========================================================================
     
-    // Ensure we have a valid window to draw into. Do NOT create duplicates.
     private void ensureResultImpExists() {
-        // 1. If we already hold a valid reference, good.
         if (resultImp != null && resultImp.isVisible()) return;
-        
-        // 2. Try to recover a loose window with "RIA-" prefix
         attemptRecoverResultImp();
         if (resultImp != null) return;
 
-        // 3. Create NEW only if absolutely necessary
         if (imp1 == null) return;
         int width = imp1.getWidth(); 
         int height = imp1.getHeight();
         FloatProcessor fp = new FloatProcessor(width, height);
-        
-        // Initial dummy title, will be updated immediately
         resultImp = new ImagePlus(generateResultTitle(), fp);
         resultImp.show();
     }
@@ -118,12 +115,10 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         
         for (int id : ids) {
             ImagePlus imp = WindowManager.getImage(id);
-            // Only grab windows that look like our results
             if (imp != null && imp.getTitle().startsWith("RIA-")) {
                 resultImp = imp;
                 IJ.showStatus("Recovered: " + imp.getTitle());
                 isUpdatingUI = true;
-                // Sync UI to image state
                 valMin = resultImp.getDisplayRangeMin();
                 valMax = resultImp.getDisplayRangeMax();
                 spinMin.setValue(valMin);
@@ -190,7 +185,6 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         return t.replaceAll("^(?i)C\\d+-", "");
     }
 
-    // Smart Title Generation
     private String generateResultTitle() {
         if (imp1 == null || imp2 == null) return "RIA-Result";
         String t1 = getChannelTag(imp1);
@@ -199,7 +193,6 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         return "RIA-" + t1 + "_" + t2 + "-Result-" + base;
     }
 
-    // [MODIFIED] Preview only updates the CURRENT slice in-place
     private void updatePreview(boolean reCalculateMath) {
         if (imp1 == null || imp2 == null) return;
         if (imp1 == imp2) {
@@ -207,13 +200,10 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
             return;
         }
         
-        ensureResultImpExists(); // Make sure we have a window
+        ensureResultImpExists(); 
 
         if (reCalculateMath) {
-            // Logic: Use resultImp's current Z, or 1 if it's a new single slice
             int currentZ = resultImp.getCurrentSlice();
-            
-            // Handle edge case where result is single slice but inputs are stack
             int inputZ = currentZ; 
             if (currentZ > imp1.getStackSize()) inputZ = 1; 
             
@@ -222,27 +212,20 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
             
             FloatProcessor fpResult = calculateRatioMath(ip1, ip2, valBg, valThresh);
             
-            // In-place update of the processor
             if (resultImp.getStackSize() > 1) {
-                // If it's a stack, just update the visible slice (preview mode)
                 resultImp.getStack().setProcessor(fpResult, currentZ);
             } else {
-                // If it's a single image, set the processor
                 resultImp.setProcessor(fpResult);
             }
         }
 
-        // Apply visual settings in-place
         String lut = (String) comboLUT.getSelectedItem();
         if (lut != null && !lut.startsWith("---")) {
              IJ.run(resultImp, lut, ""); 
         }
         
         resultImp.setDisplayRange(valMin, valMax); 
-        
-        // [KEY] Update Title Live (e.g. after Swap)
         resultImp.setTitle(generateResultTitle());
-        
         resultImp.updateAndDraw();
         
         if (isValidLegendOpen()) updateLegend();
@@ -266,7 +249,6 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         return new FloatProcessor(width, height, pRes);
     }
 
-    // [MODIFIED] Full stack calculation (Heavy Operation)
     private void processEntireStack() {
         if (imp1 == null || imp2 == null || imp1 == imp2) return;
 
@@ -293,7 +275,6 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
 
             SwingUtilities.invokeLater(() -> {
                 ensureResultImpExists();
-                // [KEY] Replace the stack IN-PLACE
                 resultImp.setStack(finalStack);
                 resultImp.setTitle(generateResultTitle());
                 
@@ -301,7 +282,7 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
                 if (lut != null && !lut.startsWith("---")) IJ.run(resultImp, lut, ""); 
                 
                 resultImp.setDisplayRange(valMin, valMax);
-                resultImp.setSlice(1); // Go to start
+                resultImp.setSlice(1); 
                 resultImp.updateAndDraw();
                 
                 if (isValidLegendOpen()) updateLegend();
@@ -337,7 +318,6 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
             IJ.showStatus("Synchronizing stack...");
             isBatchProcessing = true;
             try {
-                // Ensure math is up to date for RGB conversion
                 int nSlices = imp1.getStackSize();
                 ImageStack stack = resultImp.getStack();
                 for (int z = 1; z <= nSlices; z++) {
@@ -377,7 +357,7 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         Object src = e.getSource();
         
         if (src == btnRefresh) {
-            refreshImageList(); // Only refreshes dropdowns, no processing
+            refreshImageList(); 
         } 
         else if (src == btnSwap) { 
             if (comboNum.getItemCount() > 1) {
@@ -389,7 +369,6 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
                 updateChannelReferences();
                 isUpdatingUI = false;
                 
-                // [SWAP = PREVIEW] Only update current frame, fast response
                 if (imp1 != null && imp2 != null) {
                     IJ.showStatus("Swapped. Showing preview...");
                     updatePreview(true);
@@ -399,13 +378,12 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         else if (src == btnRecalc) { 
              new Thread(() -> {
                 IJ.showStatus("Recalculating entire stack...");
-                processEntireStack(); // [RECALC = FULL STACK]
+                processEntireStack(); 
             }).start();
         }
         else if (src == comboNum || src == comboDen) {
             if (!isUpdatingUI) { 
                 updateChannelReferences(); 
-                // [CHANGE = PREVIEW]
                 updatePreview(true);   
             }
         } 
@@ -439,7 +417,6 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
             }
             updateParamsFromUI();
             boolean isMathChange = (slider == sliderBg || slider == sliderThresh);
-            // Sliders also only trigger Preview update
             updatePreview(isMathChange);
             isUpdatingUI = false;     
         };
@@ -451,17 +428,13 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
     public void itemStateChanged(ItemEvent e) {
         if (e.getStateChange() == ItemEvent.SELECTED && e.getSource() == comboLUT) {
             if (resultImp == null) attemptRecoverResultImp();
-            
             if (resultImp != null) {
                 isUpdatingUI = true;
                 String lutName = (String) comboLUT.getSelectedItem();
-                
                 if (lutName == null || lutName.startsWith("---")) return;
-                
                 IJ.run(resultImp, lutName, "");
                 resultImp.setDisplayRange(valMin, valMax); 
                 resultImp.updateAndDraw(); 
-                
                 if (isValidLegendOpen()) updateLegend();
                 isUpdatingUI = false;
             }
@@ -469,7 +442,7 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
     }
 
     // ========================================================================
-    // LOGIC BLOCK 4: Init & Utils (Silent Split)
+    // LOGIC BLOCK 4: Init & Utils
     // ========================================================================
 
     private void refreshImageList() {
@@ -511,6 +484,7 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         
         for (ImagePlus imp : availableImages) {
             String name = imp.getTitle();
+            // Truncate logic handles logical string, panel width handles visual
             if (name.length() > 25) name = name.substring(0, 22) + "...";
             comboNum.addItem(name); comboDen.addItem(name);
         }
@@ -525,8 +499,6 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         isUpdatingUI = false;
         
         updateChannelReferences();
-        
-        // [REMOVED] Auto-start thread. User must adjust and click Recalc.
     }
     
     private String[] buildLutList() {
@@ -578,6 +550,7 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
     // LOGIC BLOCK 5: Visualization
     // ========================================================================
 
+    // (Code for updateLegend, isValidLegendOpen, close omitted for brevity but presumed same)
     private void updateLegend() {
         if (resultImp == null) return;
         int barW = 20; int barH = 200;
@@ -638,7 +611,7 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         if (isValidLegendOpen()) impLegend.close();
         if (resultImp != null) resultImp.close();
     }
-    
+
     // ========================================================================
     // GUI Construction
     // ========================================================================
@@ -648,6 +621,9 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         JPanel mainPanel = new JPanel();
         mainPanel.setLayout(new BoxLayout(mainPanel, BoxLayout.Y_AXIS));
         mainPanel.setBorder(new EmptyBorder(8, 8, 8, 8)); 
+        
+        // [UI FIX 2] Force fixed width for consistency
+        mainPanel.setPreferredSize(new Dimension(MAIN_PANEL_WIDTH, 0));
 
         mainPanel.add(createHeaderPanel());
         mainPanel.add(Box.createVerticalStrut(5)); 
@@ -696,7 +672,6 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.fill = GridBagConstraints.HORIZONTAL; gbc.insets = new Insets(2, 2, 2, 2); gbc.weightx = 1.0;
         
-        // Row 1: [Import] [Swap]
         btnRefresh = new JButton("Import / Refresh");
         styleButton(btnRefresh, COLOR_THEME_BLUE); 
         btnRefresh.addActionListener(this);
@@ -715,10 +690,14 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         JLabel lblNum = new JLabel("Numerator:"); lblNum.setFont(FONT_NORMAL);
         gbc.gridx = 0; gbc.gridy = 1; p.add(lblNum, gbc);
         comboNum = new JComboBox<>(); comboNum.setFont(FONT_NORMAL); comboNum.addActionListener(this); 
+        // [UI FIX 3] Limit dropdown width to avoid window explosion
+        comboNum.setPreferredSize(new Dimension(150, 25));
         gbc.gridx = 1; gbc.gridy = 1; p.add(comboNum, gbc);
+        
         JLabel lblDen = new JLabel("Denominator:"); lblDen.setFont(FONT_NORMAL);
         gbc.gridx = 0; gbc.gridy = 2; p.add(lblDen, gbc);
         comboDen = new JComboBox<>(); comboDen.setFont(FONT_NORMAL); comboDen.addActionListener(this); 
+        comboDen.setPreferredSize(new Dimension(150, 25));
         gbc.gridx = 1; gbc.gridy = 2; p.add(comboDen, gbc);
         return p;
     }
@@ -780,7 +759,6 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         JPanel p = createTitledPanel("Actions");
         p.setLayout(new BoxLayout(p, BoxLayout.Y_AXIS));
         
-        // Row 1: Legend
         JPanel pBarBtns = new JPanel(new GridLayout(1, 2, 5, 0)); 
         pBarBtns.setBorder(new EmptyBorder(0, 2, 5, 2)); 
         
@@ -795,12 +773,11 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         pBarBtns.add(btnBarShow); pBarBtns.add(btnBarClose);
         p.add(pBarBtns);
 
-        // Row 2: Recalculate & Snapshot
         JPanel pExportBtns = new JPanel(new GridLayout(1, 2, 5, 0));
         pExportBtns.setBorder(new EmptyBorder(0, 2, 0, 2));
         
         btnRecalc = new JButton("Recalculate Stack"); 
-        styleButton(btnRecalc, COLOR_THEME_BLUE); // Unified Blue
+        styleButton(btnRecalc, COLOR_THEME_BLUE); 
         btnRecalc.addActionListener(this);
         
         btnSnapshot = new JButton("Save as RGB");
