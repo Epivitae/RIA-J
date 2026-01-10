@@ -1,6 +1,6 @@
 {
-  "title": "RIA-J: Ratio Imaging Analyzer (Java) - Interactive Ratiometric Analysis for ImageJ/Fiji",
-  "description": "<p><strong>RIA-J (Ratio Imaging Analyzer - Java Edition)</strong> is a lightweight, high-performance ImageJ/Fiji plugin designed for interactive ratiometric fluorescence analysis. It serves as the native Java counterpart to the standalone <a href=\"https://github.com/Epivitae/RatioImagingAnalyzer\">RIA (Python)</a> software.</p><p>Unlike traditional macro-based workflows, RIA-J provides a modern, non-modal <strong>Swing Dashboard</strong> that allows researchers to fine-tune background subtraction and thresholding parameters in real-time, visualizing the results instantly on the current frame.</p><p><strong>Key Features:</strong></p><ul><li><strong>🎛️ Interactive Dashboard:</strong> A floating control panel engineered with Java Swing for seamless parameter tuning without blocking the image view.</li><li><strong>🧠 Smart Masking:</strong> Implements dynamic <code>NaN</code> thresholding and background subtraction to eliminate noise and edge artifacts in ratio calculations.</li><li><strong>📉 Scientific-Grade Processing:</strong> Features optional <strong>Normalized Convolution</strong> (smooth-while-preserving-edges) to handle signal boundaries correctly, avoiding the &quot;dark halo&quot; effect of standard Gaussian blurs.</li><li><strong>⚡ Batch Processing:</strong> Includes a one-click &quot;Apply to Stack&quot; engine to process high-dimensional time-lapse data (T-series) efficiently.</li><li><strong>🎨 Visualization:</strong> Integrated scientific LUTs (Fire, Ice, Physics) and automated Calibration Bar generation.</li></ul>",
+  "title": "RIA-J: Ratio Imaging Analyzer (Java) - Publication-Grade Ratiometric Analysis for ImageJ/Fiji",
+  "description": "<p><strong>RIA-J (Ratio Imaging Analyzer - Java Edition)</strong> is a publication-grade ImageJ/Fiji plugin designed to streamline the workflow of ratiometric fluorescence analysis. It brings the rigorous quantification capabilities of the standalone <a href=\"https://github.com/Epivitae/RatioImagingAnalyzer\">RIA (Python)</a> project directly into the native ImageJ ecosystem.</p><p><strong>v1.0.0 Update:</strong> Now featuring a <strong>&quot;Direct Stack&quot;</strong> engine, RIA-J automatically processes high-dimensional time-lapse datasets in the background immediately upon import, offering a seamless &quot;What You See Is What You Get&quot; experience without manual batch application.</p><p><strong>Key Features:</strong></p><ul><li><strong>🚀 Direct Stack Workflow:</strong> Eliminates manual batch steps. The plugin automatically computes the entire ratio stack upon import, allowing real-time parameter tuning that is instantly reflected across the dataset.</li><li><strong>🧠 Smart Automation:</strong> Features global window scanning to detect open images, intelligently splitting composite files and auto-pairing numerator/denominator channels.</li><li><strong>⚡ Publication-Ready Export:</strong> Includes a dedicated <strong>RGB Export</strong> engine that generates &quot;burnt-in&quot; RGB Snapshots or RGB Stacks (Videos). It automatically synchronizes visualization settings (LUTs, contrast) to all frames before export.</li><li><strong>🎨 AI-Friendly Visualization:</strong> Generates independent, borderless Legend/Color Bar windows with pure white backgrounds, optimized for easy assembly in Adobe Illustrator or Inkscape.</li><li><strong>🏷️ Standardized Data Management:</strong> Enforces a strict naming convention (e.g., <code>RIA-Result</code>, <code>RIA-RGB-Stack</code>) and includes a filename cleaner to strip technical prefixes, ensuring data traceability.</li></ul>",
   "creators": [
     {
       "name": "Wang, Kui",
@@ -22,23 +22,16 @@
     "ratiometric-imaging",
     "ratiometric-analysis",
     "fluorescence-microscopy",
-    "FRET",
-    "fret-analysis",
     "calcium-imaging",
     "ion-sensing",
     "metabolic-imaging",
-    "mitochondrial-metabolism",
     "redox-ratio",
     "nadh-imaging",
-    "tryptophan-fluorescence",
-    "intrinsic-fluorescence",
-    "protein-conformation",
-    "atp-sensor",
-    "genetically-encoded-indicator",
     "biosensors",
-    "normalized-convolution",
     "background-subtraction",
-    "dynamic-masking"
+    "dynamic-masking",
+    "publication-quality",
+    "visualization"
   ],
   "upload_type": "software",
   "related_identifiers": [

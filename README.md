@@ -18,24 +18,28 @@
 
 ## 📖 Overview
 
-**RIA-J** is a lightweight, interactive plugin designed to bring the rigorous workflow of ratiometric fluorescence analysis directly into the **ImageJ/Fiji** ecosystem. 
+**RIA-J** is a lightweight, publication-grade tool designed to bring the rigorous workflow of ratiometric fluorescence analysis directly into the **ImageJ/Fiji** ecosystem. 
 
-It empowers researchers to perform **Background Subtraction**, **Dynamic Masking**, and **Real-time Ratio Calculation** through a modern, user-friendly dashboard, eliminating the need for complex macro scripting.
+It empowers researchers to perform **Background Subtraction**, **Dynamic Masking**, and **Real-time Ratio Calculation** through a modern, user-friendly dashboard. 
+
+**v1.0.0 Update:** Now featuring a **"Direct Stack" workflow**, RIA-J automatically processes entire time-lapse datasets in the background, offering a seamless "What You See Is What You Get" experience.
 
 <div align="center">
-  <img src="images/ria-j-main.png" width="80%">
+  <img src="images/ria-j-main.png" width="60%">
 </div>
 
-
-*(The interactive dashboard allows real-time tuning of parameters)*
+*(The modern v1.0 interface with streamlined controls)*
 
 ## ✨ Key Features
 
-* **🎛️ Modern Swing Dashboard**: A non-modal, floating control panel that allows you to adjust parameters while interacting with the image.
-* **⚡ Real-time Preview**: Instantly visualize how background subtraction and thresholding affect the ratio calculation on the current frame.
-* **🧠 Smart Masking**: Dynamic `NaN` thresholding ensures that background noise is effectively removed without creating edge artifacts.
-* **🎞️ Batch Processing**: One-click **"Apply to Stack"** functionality to process high-dimensional time-lapse data (T-series) efficiently.
-* **🎨 Visualization**: Built-in support for scientific LUTs (Fire, Ice, Physics) and Calibration Bars.
+* **🚀 Direct Stack Workflow**: No need to manually "Apply". The plugin automatically computes the entire ratio stack upon import. Adjustments to parameters are instantly reflected on the current frame and synchronized to the whole stack upon export.
+* **🧠 Smart Window Scan**: Automatically detects and lists all open images. It intelligently splits composite images or identifies separate C1/C2 windows, defaulting to the most logical numerator/denominator pair.
+* **⚡ Publication-Ready RGB Export**:
+    * **RGB Stack**: One-click export of your entire time-lapse analysis as a high-quality RGB video/stack.
+    * **Snapshot**: Instantly capture the current frame for figure creation.
+    * **Auto-Sync**: Ensures your current visualization settings (LUT, Contrast) are applied to every frame in the exported video.
+* **🏷️ Standardized Naming**: Built-in "Filename Cleaner" automatically strips technical prefixes (e.g., `C1-`) and tags outputs (`RIA-Result`, `RIA-RGB`) for organized data management.
+* **🎨 AI-Friendly Legend**: Generates a clean, independent color bar window (pure white background, no clutter) designed for easy import into Adobe Illustrator or Inkscape.
 
 ## 📥 Installation
 
@@ -60,30 +64,32 @@ If you prefer to install a specific version manually:
 3.  **Restart**: Restart ImageJ.
 4.  **Run**: Access the tool via `Plugins > RIA-J (Ratio Processor)`.
 
-## 📂 Sample Data
+## 🛠️ Usage Workflow (v1.0)
 
-To test the plugin immediately, you can use the provided sample dataset:
-
-1.  Navigate to the `sample_data/` folder in this repository.
-2.  Download **`dual_channel_demo.tif`**.
-3.  Drag it into ImageJ and follow the workflow below.
-
-## 🛠️ Usage Workflow
-
-1.  **Open Image**: Load your dual-channel time-lapse stack into ImageJ.
-2.  **Split Channels**:
-    * Go to `Image > Color > Split Channels`.
-    * *(RIA-J requires two separate windows for the numerator and denominator)*.
-3.  **Launch Plugin**:
-    * Go to `Plugins > RIA-J > Ratio Processor`.
-    * Select the **Numerator (Ch1)** and **Denominator (Ch2)**.
+1.  **Open Images**: Drag your raw data (Single Composite or Split Files) into ImageJ.
+2.  **Launch Plugin**: Go to `Plugins > RIA-J > Ratio Analyzer`.
+3.  **One-Click Import**: 
+    * Click **`Import / Refresh`**. 
+    * *The plugin automatically detects channels, splits composites if needed, and computes the initial ratio stack in the background.*
 4.  **Interactive Tuning**:
-    * **Background**: Adjust to subtract camera offset/scattered light.
-    * **NaN Threshold**: Increase until the background becomes transparent (NaN).
-    * **Visualization**: Adjust Min/Max sliders to optimize contrast.
-5.  **Finalize**:
-    * Click **Apply to Stack** to process the entire video.
-    * Click **Add Color Bar** to overlay a scale bar.
+    * Adjust **Background** and **NaN Threshold** to mask noise.
+    * Tune **Min/Max Ratio** sliders to optimize the dynamic range.
+    * *Changes are reflected immediately on the current frame.*
+5.  **Export Results**:
+    * **Data**: The `RIA-Result` window already contains the 32-bit raw data for quantification.
+    * **Publication**: Click **`Save as RGB`** (Red Button). 
+        * Choose to export the **Current Frame (Snapshot)** or the **Entire Stack (Movie)**.
+        * The plugin automatically synchronizes your settings to all frames before exporting.
+
+## 📂 Output Files
+
+RIA-J enforces a strict naming convention to keep your data organized:
+
+| File Type | Naming Convention | Bit-Depth | Purpose |
+| :--- | :--- | :--- | :--- |
+| **Raw Result** | `RIA-Result-[SampleName]` | 32-bit Float | Measurement, Quantification, ROI Analysis |
+| **RGB Stack** | `RIA-RGB-Stack-[SampleName]` | 24-bit RGB | Video presentation, PowerPoint, Visual inspection |
+| **RGB Snap** | `RIA-RGB-Snap-[SampleName]` | 24-bit RGB | Figure creation (Adobe Illustrator/Inkscape) |
 
 ## ⚙️ Build from Source
 
@@ -92,10 +98,10 @@ To test the plugin immediately, you can use the provided sample dataset:
 ```bash
 git clone [https://github.com/Epivitae/RIA-J.git](https://github.com/Epivitae/RIA-J.git)
 cd RIA-J
-mvnd package
+mvn clean package
 ```
 
-The compiled plugin will be generated in `target/RIA_J-0.3.0.jar`.
+The compiled plugin will be generated in `target/RIA_J-1.0.0.jar`.
 
 ## 🤝 Contributing
 

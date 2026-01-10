@@ -27,7 +27,7 @@ import java.net.URL;
 
 /**
  * PROJECT: RIA-J (Ratio Imaging Analyzer - Java Edition)
- * VERSION: v0.20.0 (Global Window Scan for Multi-File Support)
+ * VERSION: v1.0.0 (First Stable Version)
  * AUTHOR: Kui Wang
  */
 public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemListener, ImageListener {
