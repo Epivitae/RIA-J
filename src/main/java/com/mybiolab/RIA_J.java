@@ -28,13 +28,12 @@ import java.util.ArrayList;
 
 /**
  * PROJECT: RIA-J (Ratio Imaging Analyzer - Java Edition)
- * VERSION: v1.0.9 (Direct Stack Swap & Unified Blue Theme)
+ * VERSION: v1.0.10 (Smart Naming)
  * AUTHOR: Kui Wang
  */
 public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemListener, ImageListener {
 
     // --- GUI Design Constants ---
-    // [UI] strictly limited to Blue (Input/Process) and Red (Output/Action)
     private static final Color COLOR_THEME_BLUE = new Color(0, 102, 204); 
     private static final Color COLOR_THEME_RED  = new Color(220, 50, 50); 
 
@@ -101,7 +100,7 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         
         for (int id : ids) {
             ImagePlus imp = WindowManager.getImage(id);
-            if (imp != null && imp.getTitle().startsWith("RIA-Result-")) {
+            if (imp != null && imp.getTitle().startsWith("RIA-")) {
                 resultImp = imp;
                 IJ.showStatus("Recovered: " + imp.getTitle());
                 isUpdatingUI = true;
@@ -151,13 +150,39 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
     // LOGIC BLOCK 2: Core Processing & Naming
     // ========================================================================
 
-    private String getCleanTitle(ImagePlus imp) {
-        String title = imp.getShortTitle(); 
-        if (title.endsWith(".tif") || title.endsWith(".tiff") || title.endsWith(".nd2") || title.endsWith(".lsm")) {
-            title = title.substring(0, title.lastIndexOf('.'));
+    // [NEW] Extract "C1", "C2" or "Red" from title
+    private String getChannelTag(ImagePlus imp) {
+        if (imp == null) return "?";
+        String t = imp.getTitle();
+        // Match C1-, C2- pattern standard in ImageJ split
+        if (t.matches("^(?i)C\\d+-.*")) {
+            return t.substring(0, t.indexOf('-'));
         }
-        title = title.replaceAll("^(?i)C\\d+-", "");
-        return title;
+        // Fallback: If filename is "Red.tif", use "Red"
+        if (t.contains(".")) t = t.substring(0, t.lastIndexOf('.'));
+        // If name is very long, truncate
+        if (t.length() > 6) return t.substring(0, 4);
+        return t;
+    }
+
+    // [NEW] Extract "Composite" from "C1-Composite.tif"
+    private String getBaseName(ImagePlus imp) {
+        if (imp == null) return "Image";
+        String t = imp.getTitle();
+        if (t.endsWith(".tif") || t.endsWith(".tiff") || t.endsWith(".nd2") || t.endsWith(".lsm")) {
+            t = t.substring(0, t.lastIndexOf('.'));
+        }
+        // Remove C1- prefix if present
+        return t.replaceAll("^(?i)C\\d+-", "");
+    }
+
+    // [NEW] Centralized Title Generator: RIA-C1_C2-Result-BaseName
+    private String generateResultTitle() {
+        if (imp1 == null || imp2 == null) return "RIA-Result";
+        String t1 = getChannelTag(imp1);
+        String t2 = getChannelTag(imp2);
+        String base = getBaseName(imp1);
+        return "RIA-" + t1 + "_" + t2 + "-Result-" + base;
     }
 
     private void updatePreview(boolean reCalculateMath) {
@@ -239,8 +264,8 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
                 if (resultImp == null) createInitialResult();
                 resultImp.setStack(finalStack);
                 
-                String sourceName = getCleanTitle(imp1);
-                resultImp.setTitle("RIA-Result-" + sourceName);
+                // [NEW] Use Smart Naming
+                resultImp.setTitle(generateResultTitle());
                 
                 String lut = (String) comboLUT.getSelectedItem();
                 IJ.run(resultImp, lut != null ? lut : "Fire", ""); 
@@ -275,8 +300,14 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
             doStack = gd.getNextBoolean();
         }
 
+        // [NEW] Smart Naming for RGB
+        // Current Title: RIA-C1_C2-Result-Composite
+        // RGB Title:     RIA-RGB-C1_C2-Result-Composite
         String currentTitle = resultImp.getTitle();
-        String baseName = currentTitle.replace("RIA-Result-", "");
+        String newTitle = currentTitle.replace("RIA-", "RIA-RGB-");
+        if (doStack && !newTitle.contains("Stack")) {
+             newTitle = newTitle.replace("RIA-RGB-", "RIA-RGB-Stack-");
+        }
 
         if (doStack) {
             IJ.showStatus("Synchronizing stack...");
@@ -296,14 +327,14 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
             
             IJ.showStatus("Converting to RGB...");
             ImagePlus snapshot = resultImp.duplicate(); 
-            snapshot.setTitle("RIA-RGB-Stack-" + baseName);
+            snapshot.setTitle(newTitle);
             snapshot.setDisplayRange(valMin, valMax);
             IJ.run(snapshot, "RGB Color", ""); 
             snapshot.show();
             
         } else {
             ImageProcessor currentIp = resultImp.getProcessor().duplicate();
-            ImagePlus snapshot = new ImagePlus("RIA-RGB-Snap-" + baseName, currentIp);
+            ImagePlus snapshot = new ImagePlus(newTitle, currentIp);
             snapshot.setDisplayRange(valMin, valMax);
             snapshot.setLut(resultImp.getProcessor().getLut());
             IJ.run(snapshot, "RGB Color", "");
@@ -333,16 +364,14 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
                 updateChannelReferences();
                 isUpdatingUI = false;
                 
-                // [IMPROVED SWAP LOGIC] 
                 if (imp1 != null && imp2 != null) {
                     IJ.showStatus("Swapped channels. Updating...");
                     
                     if (imp1.getStackSize() > 1) {
-                        // If it's a stack, process the whole stack immediately
-                        // No snapshot, no preview, just the full stack result.
                         new Thread(() -> processEntireStack()).start();
                     } else {
-                        // If single image, just update the preview
+                        // For single images, we must update the name too
+                        if (resultImp != null) resultImp.setTitle(generateResultTitle());
                         createInitialResult();
                         updatePreview(true);
                     }
@@ -358,7 +387,9 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         else if (src == comboNum || src == comboDen) {
             if (!isUpdatingUI) { 
                 updateChannelReferences(); 
-                createInitialResult(); 
+                createInitialResult();
+                // [NEW] Update title immediately on selection change
+                if (resultImp != null) resultImp.setTitle(generateResultTitle());
                 updatePreview(true);   
             }
         } 
@@ -516,7 +547,10 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         if (resultImp != null) { resultImp.changes = false; resultImp.close(); }
         int width = imp1.getWidth(); int height = imp1.getHeight();
         FloatProcessor fp = new FloatProcessor(width, height);
-        resultImp = new ImagePlus("RIA-Result-Temp", fp);
+        
+        // [NEW] Use generated title
+        String title = generateResultTitle();
+        resultImp = new ImagePlus(title, fp);
         resultImp.show();
     }
     
@@ -664,7 +698,6 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.fill = GridBagConstraints.HORIZONTAL; gbc.insets = new Insets(2, 2, 2, 2); gbc.weightx = 1.0;
         
-        // Row 1: [Import] [Swap]
         btnRefresh = new JButton("Import / Refresh");
         styleButton(btnRefresh, COLOR_THEME_BLUE); 
         btnRefresh.addActionListener(this);
@@ -732,9 +765,7 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         JLabel lblLut = new JLabel("LUT Color:  "); lblLut.setFont(FONT_NORMAL);
         pLut.add(lblLut);
         
-        // Use auto-scanned list
         String[] allLuts = buildLutList();
-        
         comboLUT = new JComboBox<>(allLuts); 
         comboLUT.setFont(FONT_NORMAL); 
         comboLUT.setMaximumRowCount(15); 
@@ -770,7 +801,7 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         pExportBtns.setBorder(new EmptyBorder(0, 2, 0, 2));
         
         btnRecalc = new JButton("Recalculate Stack"); 
-        styleButton(btnRecalc, COLOR_THEME_BLUE); // [CHANGED to BLUE]
+        styleButton(btnRecalc, COLOR_THEME_BLUE); 
         btnRecalc.addActionListener(this);
         
         btnSnapshot = new JButton("Save as RGB");
