@@ -27,7 +27,7 @@ import java.net.URL;
 
 /**
  * PROJECT: RIA-J (Ratio Imaging Analyzer - Java Edition)
- * VERSION: v0.18.0 (Slim UI, Auto-Sync Export, No Apply Button)
+ * VERSION: v0.20.0 (Global Window Scan for Multi-File Support)
  * AUTHOR: Kui Wang
  */
 public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemListener, ImageListener {
@@ -43,9 +43,8 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
     private static final Font FONT_HEADER = new Font("SansSerif", Font.BOLD, 16); 
     private static final Font FONT_SMALL  = new Font("SansSerif", Font.PLAIN, 10); 
     
-    // [MODIFIED] Narrower width
-    private static final int COMPONENT_WIDTH = 150; 
-    private static final int SLIDER_HEIGHT   = 18;  
+    private static final int COMPONENT_WIDTH = 100; 
+    private static final int SLIDER_HEIGHT   = 15;  
 
     // --- Components ---
     private JButton btnRefresh; 
@@ -55,7 +54,6 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
     private JComboBox<String> comboLUT;
     private JButton btnBarShow, btnBarClose; 
     private JButton btnSnapshot; 
-    // [REMOVED] btnApply
     
     // --- Data Objects ---
     private ImagePlus[] availableImages;
@@ -75,7 +73,7 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
     private double valMax = 5.0;
 
     public RIA_J() {
-        super("RIA-J (Ratio Processor)"); 
+        super("Ratio Analyzer"); 
         ImagePlus.addImageListener(this); 
     }
 
@@ -171,7 +169,6 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
             FloatProcessor fpResult = calculateRatioMath(ip1, ip2, valBg, valThresh);
             
             if (resultImp.getStackSize() > 1) {
-                // Only update current slice in the stack for performance
                 resultImp.getStack().setProcessor(fpResult, currentZ);
                 resultImp.updateAndDraw(); 
             } else {
@@ -202,7 +199,6 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         return new FloatProcessor(width, height, pRes);
     }
 
-    // Used for initial processing and internal syncing
     private void processEntireStack() {
         isBatchProcessing = true; 
         
@@ -216,7 +212,6 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
             ImageStack finalStack = new ImageStack(width, height);
             
             for (int z = 1; z <= nSlices; z++) {
-                // Show progress only if called via thread (Import)
                 if(SwingUtilities.isEventDispatchThread() == false) IJ.showProgress(z, nSlices);
                 
                 ImageProcessor ip1 = imp1.getStack().getProcessor(z).convertToFloat();
@@ -228,20 +223,21 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
                 finalStack.addSlice(label, fp);
             }
 
-            Runnable updateUI = () -> {
+            SwingUtilities.invokeLater(() -> {
                 if (resultImp == null) createInitialResult();
                 resultImp.setStack(finalStack);
+                
                 String sourceName = getCleanTitle(imp1);
                 resultImp.setTitle("RIA-Result-" + sourceName);
+                
                 resultImp.setDisplayRange(valMin, valMax);
                 String lut = (String) comboLUT.getSelectedItem();
                 IJ.run(resultImp, lut != null ? lut : "Fire", ""); 
                 resultImp.setSlice(1);
+                
                 if (isValidLegendOpen()) updateLegend();
-            };
-
-            if (SwingUtilities.isEventDispatchThread()) updateUI.run();
-            else SwingUtilities.invokeLater(updateUI);
+                IJ.showStatus("Finished!");
+            });
             
         } catch (Exception e) {
             IJ.handleException(e);
@@ -250,7 +246,6 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         }
     }
     
-    // [Export Logic]
     private void createRGBSnapshot() {
         if (resultImp == null) attemptRecoverResultImp();
         if (resultImp == null) { IJ.error("No result image found."); return; }
@@ -266,10 +261,11 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
             doStack = gd.getNextBoolean();
         }
 
+        String currentTitle = resultImp.getTitle();
+        String baseName = currentTitle.replace("RIA-Result-", "");
+
         if (doStack) {
             IJ.showStatus("Synchronizing stack...");
-            // [SYNC STEP] Ensure all frames use current sliders
-            // We run this synchronously here to ensure data is ready before duplication
             isBatchProcessing = true;
             try {
                 int nSlices = imp1.getStackSize();
@@ -286,18 +282,14 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
             
             IJ.showStatus("Converting to RGB...");
             ImagePlus snapshot = resultImp.duplicate(); 
-            String currentTitle = resultImp.getTitle();
-            String baseName = currentTitle.replace("RIA-Result-", "");
-            snapshot.setTitle("RGB-Stack-" + baseName);
+            snapshot.setTitle("RIA-RGB-Stack-" + baseName);
             snapshot.setDisplayRange(valMin, valMax);
             IJ.run(snapshot, "RGB Color", ""); 
             snapshot.show();
             
         } else {
             ImageProcessor currentIp = resultImp.getProcessor().duplicate();
-            String currentTitle = resultImp.getTitle();
-            String baseName = currentTitle.replace("RIA-Result-", "");
-            ImagePlus snapshot = new ImagePlus("RGB-Snap-" + baseName, currentIp);
+            ImagePlus snapshot = new ImagePlus("RIA-RGB-Snap-" + baseName, currentIp);
             snapshot.setDisplayRange(valMin, valMax);
             snapshot.setLut(resultImp.getProcessor().getLut());
             IJ.run(snapshot, "RGB Color", "");
@@ -375,42 +367,57 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
     }
 
     // ========================================================================
-    // LOGIC BLOCK 4: Init & Utils
+    // LOGIC BLOCK 4: Init & Utils (Fixed for Multi-File)
     // ========================================================================
 
     private void refreshImageList() {
-        ImagePlus activeImp = IJ.getImage(); 
-        if (activeImp == null && WindowManager.getImageCount() == 0) {
+        // 1. Get List of ALL Open Image IDs
+        int[] ids = WindowManager.getIDList();
+        
+        // 2. Intelligent Check: If User opened only ONE composite, split it for them.
+        // But if they opened multiple files (C1, C2), respect that.
+        if (ids != null && ids.length == 1) {
+            ImagePlus imp = WindowManager.getImage(ids[0]);
+            if (imp != null && imp.isComposite()) {
+                IJ.showStatus("Auto-splitting composite...");
+                ChannelSplitter.split(imp);
+                ids = WindowManager.getIDList(); // Refresh IDs after split
+            }
+        }
+
+        if (ids == null || ids.length == 0) {
             IJ.error("RIA-J", "No images found!"); return;
         }
 
-        if (activeImp != null && (activeImp.isComposite() || activeImp.getNChannels() > 1)) {
-            IJ.showStatus("Auto-splitting...");
-            availableImages = ChannelSplitter.split(activeImp);
-        } else {
-            int[] ids = WindowManager.getIDList();
-            if (ids == null) return;
-            java.util.List<ImagePlus> list = new java.util.ArrayList<>();
-            for (int id : ids) {
-                ImagePlus imp = WindowManager.getImage(id);
-                String t = imp.getTitle();
-                if (imp != resultImp && imp != impLegend && !t.startsWith("RIA-Result") && !t.startsWith("RGB-")) {
-                    list.add(imp);
-                }
+        // 3. Populate List with EVERYTHING found (Filtered)
+        java.util.List<ImagePlus> list = new java.util.ArrayList<>();
+        for (int id : ids) {
+            ImagePlus imp = WindowManager.getImage(id);
+            if (imp == null) continue;
+            
+            String t = imp.getTitle();
+            // Filter out RIA generated windows to prevent self-loop
+            if (imp != resultImp && imp != impLegend && 
+                !t.startsWith("RIA-") && !t.startsWith("Legend")) {
+                list.add(imp);
             }
-            availableImages = list.toArray(new ImagePlus[0]);
         }
+        availableImages = list.toArray(new ImagePlus[0]);
         
         if (resultImp == null) attemptRecoverResultImp();
 
+        // 4. Update UI Dropdowns
         isUpdatingUI = true;
         comboNum.removeAllItems(); comboDen.removeAllItems();
-        if (availableImages != null && availableImages.length > 0) {
+        
+        if (availableImages.length > 0) {
             for (ImagePlus imp : availableImages) {
                 String name = imp.getTitle();
                 if (name.length() > 20) name = name.substring(0, 17) + "...";
                 comboNum.addItem(name); comboDen.addItem(name);
             }
+            // Smart Selection: 
+            // If > 1 image, Select First for Num, Second for Den
             comboNum.setSelectedIndex(0);
             if (availableImages.length > 1) comboDen.setSelectedIndex(1);
             else comboDen.setSelectedIndex(0);
@@ -419,10 +426,9 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         
         updateChannelReferences();
 
+        // 5. Auto Start if valid
         if (imp1 != null && imp2 != null) {
              new Thread(() -> {
-                // UI updates in thread need invokeLater if touching Swing
-                // But pure ImageJ status calls are fine
                 processEntireStack(); 
             }).start();
         }
@@ -666,7 +672,8 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         // Row 2: Snapshot [RED - MAIN ACTION]
         btnSnapshot = new JButton("Save as RGB");
         styleButton(btnSnapshot, COLOR_THEME_RED); 
-        btnSnapshot.setPreferredSize(new Dimension(COMPONENT_WIDTH, 35));
+        btnSnapshot.setMaximumSize(new Dimension(Integer.MAX_VALUE, 35)); 
+        btnSnapshot.setAlignmentX(Component.CENTER_ALIGNMENT);
         btnSnapshot.addActionListener(this);
         p.add(Box.createVerticalStrut(5));
         p.add(btnSnapshot);
