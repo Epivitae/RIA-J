@@ -27,7 +27,7 @@ import java.net.URL;
 
 /**
  * PROJECT: RIA-J (Ratio Imaging Analyzer - Java Edition)
- * VERSION: v0.13.0 (Legend Border Restored)
+ * VERSION: v0.14.0 (Direct Stack Workflow & UI Refinement)
  * AUTHOR: Kui Wang
  */
 public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemListener, ImageListener {
@@ -148,6 +148,7 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
     private void updatePreview(boolean reCalculateMath) {
         if (resultImp == null || imp1 == null || imp2 == null) return;
         
+        // 1. Math Step (Only current slice)
         if (reCalculateMath) {
             int currentZ = resultImp.getCurrentSlice();
             if (currentZ > imp1.getStackSize()) currentZ = 1;
@@ -156,9 +157,19 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
             ImageProcessor ip2 = imp2.getStack().getProcessor(currentZ).convertToFloat();
             
             FloatProcessor fpResult = calculateRatioMath(ip1, ip2, valBg, valThresh);
-            resultImp.setProcessor(fpResult);
+            
+            // [IMPORTANT] Stack Preservation Logic
+            // 如果结果已经是 Stack，我们只更新当前这一帧，不要把整个 Stack 销毁成单帧
+            if (resultImp.getStackSize() > 1) {
+                resultImp.getStack().setProcessor(fpResult, currentZ);
+                // 触发重绘，但不触发 ImageUpdated 导致的死循环（因为我们也没改 MinMax）
+                resultImp.updateAndDraw(); 
+            } else {
+                resultImp.setProcessor(fpResult);
+            }
         }
 
+        // 2. Display Step
         resultImp.setDisplayRange(valMin, valMax); 
         String lut = (String) comboLUT.getSelectedItem();
         IJ.run(resultImp, lut != null ? lut : "Fire", ""); 
@@ -228,12 +239,12 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         }
     }
     
-    // [UPDATED] Smart RGB Export with Auto-Recovery
+    // [Smart RGB Export]
     private void createRGBSnapshot() {
         if (resultImp == null) attemptRecoverResultImp();
         
         if (resultImp == null) {
-            IJ.error("No result image found.\nPlease run 'Apply to Stack' or ensure the result window is open.");
+            IJ.error("No result image found.");
             return;
         }
 
@@ -283,8 +294,8 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         else if (src == comboNum || src == comboDen) {
             if (!isUpdatingUI) { 
                 updateChannelReferences(); 
-                createInitialResult(); 
-                updatePreview(true); 
+                createInitialResult(); // Reset view
+                updatePreview(true);   // Show single slice preview if user changes channels manually
             }
         } 
         else if (src == btnApply) {
@@ -392,12 +403,18 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         
         updateChannelReferences();
 
-        if (resultImp != null) {
-            IJ.showStatus("Connected to existing Result.");
-        } else {
-            createInitialResult();
-            updatePreview(true);
-            IJ.showStatus("Ready.");
+        // [MODIFIED LOGIC] Automatically trigger Stack Processing on Import
+        // This gives the user the "Direct Stack" feeling immediately.
+        if (imp1 != null && imp2 != null) {
+             new Thread(() -> {
+                SwingUtilities.invokeLater(() -> {
+                    btnApply.setEnabled(false); btnApply.setText("Processing...");
+                });
+                processEntireStack(); // AUTO PROCESS!
+                SwingUtilities.invokeLater(() -> {
+                    btnApply.setEnabled(true); btnApply.setText("<html><b>Apply to Stack</b></html>");
+                });
+            }).start();
         }
     }
 
@@ -433,7 +450,7 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
     }
 
     // ========================================================================
-    // LOGIC BLOCK 5: Visualization (Legend - Border Restored)
+    // LOGIC BLOCK 5: Visualization (Legend)
     // ========================================================================
 
     private void updateLegend() {
@@ -454,11 +471,10 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         ImageProcessor ipLegendCol = ipBar.convertToRGB();
 
         ColorProcessor ipFinal = new ColorProcessor(totalW, totalH);
-        ipFinal.setColor(Color.WHITE); // Pure White Background
+        ipFinal.setColor(Color.WHITE); 
         ipFinal.fill();
         ipFinal.insert(ipLegendCol, padLeft, padTop);
         
-        // [RESTORED] Black Border around the color bar
         ipFinal.setColor(Color.BLACK);
         ipFinal.drawRect(padLeft - 1, padTop - 1, barW + 1, barH + 1);
 
@@ -468,10 +484,7 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         int steps = 5;
         for (int i = 0; i <= steps; i++) {
             int yPos = padTop + barH - (int)((double)i / steps * barH);
-            
-            // Tick mark
             ipFinal.drawLine(padLeft + barW + 1, yPos, padLeft + barW + 4, yPos);
-            
             double val = valMin + (valMax - valMin) * i / steps;
             ipFinal.drawString(String.format("%.2f", val), padLeft + barW + tickGap, yPos + 5);
         }
@@ -617,19 +630,20 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         pBarBtns.add(btnBarShow); pBarBtns.add(btnBarClose);
         p.add(pBarBtns);
 
-        // Row 2: Snapshot
-        btnSnapshot = new JButton("Save as RGB (Publication)");
+        // Row 2: Snapshot [UPDATED: Black Text]
+        btnSnapshot = new JButton("Save as RGB");
         btnSnapshot.setFont(FONT_BOLD);
-        btnSnapshot.setForeground(new Color(0, 0, 128)); 
+        // btnSnapshot.setForeground(Color.BLACK); // Default is black, so no need to set
         btnSnapshot.setAlignmentX(Component.CENTER_ALIGNMENT);
         btnSnapshot.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
         btnSnapshot.addActionListener(this);
         p.add(Box.createVerticalStrut(5));
         p.add(btnSnapshot);
 
-        // Row 3: Apply
+        // Row 3: Apply [UPDATED: Softer Red]
         btnApply = new JButton("<html><b>Apply to Stack</b></html>");
-        btnApply.setFont(FONT_BOLD); btnApply.setForeground(new Color(200, 0, 0)); 
+        btnApply.setFont(FONT_BOLD); 
+        btnApply.setForeground(new Color(160, 50, 50)); // Soft Brick Red (Not too saturated)
         btnApply.setAlignmentX(Component.CENTER_ALIGNMENT);
         btnApply.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40)); 
         btnApply.setPreferredSize(new Dimension(COMPONENT_WIDTH, 35)); 
