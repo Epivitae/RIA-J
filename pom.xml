@@ -14,7 +14,7 @@
 
     <groupId>com.mybiolab</groupId>
     <artifactId>RIA_J</artifactId>
-    <version>2.0.0</version>
+    <version>2.1.0</version>
 
     <name>RIA-J</name>
     <description>RIA-J is a publication-grade ImageJ/Fiji plugin for interactive ratiometric fluorescence analysis. It features "Direct Stack" processing, smart background masking, and one-click RGB export.</description>
