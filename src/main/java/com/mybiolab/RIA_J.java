@@ -28,7 +28,7 @@ import java.util.ArrayList;
 
 /**
  * PROJECT: RIA-J (Ratio Imaging Analyzer - Java Edition)
- * VERSION: v1.0.7 (Silent Split Mode: No extra windows)
+ * VERSION: v1.0.8 (Added Swap Button & Recalculate Stack)
  * AUTHOR: Kui Wang
  */
 public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemListener, ImageListener {
@@ -36,6 +36,7 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
     // --- GUI Design Constants ---
     private static final Color COLOR_THEME_BLUE = new Color(0, 102, 204); 
     private static final Color COLOR_THEME_RED  = new Color(220, 50, 50); 
+    private static final Color COLOR_THEME_GREEN = new Color(34, 139, 34);
 
     // Fonts
     private static final Font FONT_NORMAL = new Font("SansSerif", Font.PLAIN, 12); 
@@ -49,12 +50,14 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
 
     // --- Components ---
     private JButton btnRefresh; 
+    private JButton btnSwap; // [NEW] Swap Button
     private JComboBox<String> comboNum, comboDen;
     private JSlider sliderBg, sliderThresh, sliderMin, sliderMax;
     private JSpinner spinBg, spinThresh, spinMin, spinMax; 
     private JComboBox<String> comboLUT;
     private JButton btnBarShow, btnBarClose; 
     private JButton btnSnapshot; 
+    private JButton btnRecalc; // [NEW] Recalculate/Show Stack Button
     
     // --- Data Objects ---
     private ImagePlus[] availableImages;
@@ -160,7 +163,6 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
     private void updatePreview(boolean reCalculateMath) {
         if (resultImp == null || imp1 == null || imp2 == null) return;
         
-        // Safety: Prevent self-division
         if (imp1 == imp2) {
             IJ.showStatus("Warning: Numerator and Denominator are the same!");
             return;
@@ -321,6 +323,30 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         if (src == btnRefresh) {
             refreshImageList();
         } 
+        else if (src == btnSwap) { // [NEW] Swap Logic
+            if (comboNum.getItemCount() > 1) {
+                isUpdatingUI = true; // Prevent premature triggering
+                int idxNum = comboNum.getSelectedIndex();
+                int idxDen = comboDen.getSelectedIndex();
+                comboNum.setSelectedIndex(idxDen);
+                comboDen.setSelectedIndex(idxNum);
+                updateChannelReferences();
+                isUpdatingUI = false;
+                
+                // Trigger update manually
+                if (imp1 != null && imp2 != null) {
+                    IJ.showStatus("Swapped channels. Updating...");
+                    createInitialResult();
+                    updatePreview(true);
+                }
+            }
+        }
+        else if (src == btnRecalc) { // [NEW] Recalculate/Show Stack
+             new Thread(() -> {
+                IJ.showStatus("Recalculating entire stack...");
+                processEntireStack(); 
+            }).start();
+        }
         else if (src == comboNum || src == comboDen) {
             if (!isUpdatingUI) { 
                 updateChannelReferences(); 
@@ -391,7 +417,6 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
     // ========================================================================
 
     private void refreshImageList() {
-        // [Feature] Silent Split: Get visible images but DON'T show split channels
         int[] ids = WindowManager.getIDList();
         if (ids == null) ids = new int[0];
 
@@ -401,22 +426,17 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
             ImagePlus imp = WindowManager.getImage(id);
             if (imp == null) continue;
             
-            // Skip RIA windows
             if (imp == resultImp || imp == impLegend) continue;
             if (imp.getTitle().startsWith("RIA-") || imp.getTitle().startsWith("Legend")) continue;
 
             if (imp.isComposite()) {
-                // [SILENT MODE] Split in memory, do NOT show
                 ImagePlus[] channels = ChannelSplitter.split(imp);
                 if (channels != null) {
                     for (ImagePlus c : channels) {
-                        // Keep 'c' in memory for the dropdown, but do NOT call c.show()
                         list.add(c);
                     }
                 }
-                // We SKIP adding the original Composite to the dropdown to avoid confusion
             } else {
-                // Standard single channel
                 list.add(imp);
             }
         }
@@ -435,12 +455,10 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         
         for (ImagePlus imp : availableImages) {
             String name = imp.getTitle();
-            // Truncate long names for UI
             if (name.length() > 25) name = name.substring(0, 22) + "...";
             comboNum.addItem(name); comboDen.addItem(name);
         }
         
-        // Smart Selection (C1 vs C2)
         comboNum.setSelectedIndex(0);
         if (availableImages.length > 1) {
             comboDen.setSelectedIndex(1);
@@ -452,7 +470,6 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         
         updateChannelReferences();
 
-        // Auto Start if distinct channels found
         if (imp1 != null && imp2 != null && imp1 != imp2) {
              new Thread(() -> {
                 processEntireStack(); 
@@ -460,7 +477,6 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         }
     }
     
-    // Auto-scan all LUTs
     private String[] buildLutList() {
         String[] preferred = {
             "Fire", "Viridis", "Magma", "Ice", "Grays", "Green Fire Blue", "HiLo", "Jet"
@@ -640,11 +656,22 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.fill = GridBagConstraints.HORIZONTAL; gbc.insets = new Insets(2, 2, 2, 2); gbc.weightx = 1.0;
         
+        // Row 1: [Import] [Swap]
         btnRefresh = new JButton("Import / Refresh");
         styleButton(btnRefresh, COLOR_THEME_BLUE); 
         btnRefresh.addActionListener(this);
         
-        gbc.gridx = 0; gbc.gridy = 0; gbc.gridwidth = 2; p.add(btnRefresh, gbc);
+        btnSwap = new JButton("Swap ⇄"); // [NEW] Small swap button
+        styleButton(btnSwap, Color.DARK_GRAY);
+        btnSwap.addActionListener(this);
+        
+        // Use a sub-panel for the two top buttons
+        JPanel pTopBtns = new JPanel(new GridLayout(1, 2, 5, 0));
+        pTopBtns.add(btnRefresh);
+        pTopBtns.add(btnSwap);
+        
+        gbc.gridx = 0; gbc.gridy = 0; gbc.gridwidth = 2; p.add(pTopBtns, gbc);
+        
         gbc.gridwidth = 1;
         JLabel lblNum = new JLabel("Numerator:"); lblNum.setFont(FONT_NORMAL);
         gbc.gridx = 0; gbc.gridy = 1; p.add(lblNum, gbc);
@@ -731,14 +758,23 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         pBarBtns.add(btnBarShow); pBarBtns.add(btnBarClose);
         p.add(pBarBtns);
 
-        // Row 2: Snapshot [RED - MAIN ACTION]
+        // Row 2: Recalculate & Snapshot [NEW BUTTONS]
+        JPanel pExportBtns = new JPanel(new GridLayout(1, 2, 5, 0));
+        pExportBtns.setBorder(new EmptyBorder(0, 2, 0, 2));
+        
+        btnRecalc = new JButton("Recalculate Stack"); // [NEW]
+        styleButton(btnRecalc, COLOR_THEME_GREEN);
+        btnRecalc.addActionListener(this);
+        
         btnSnapshot = new JButton("Save as RGB");
         styleButton(btnSnapshot, COLOR_THEME_RED); 
-        btnSnapshot.setMaximumSize(new Dimension(Integer.MAX_VALUE, 35)); 
-        btnSnapshot.setAlignmentX(Component.CENTER_ALIGNMENT);
         btnSnapshot.addActionListener(this);
+        
+        pExportBtns.add(btnRecalc);
+        pExportBtns.add(btnSnapshot);
+        
         p.add(Box.createVerticalStrut(5));
-        p.add(btnSnapshot);
+        p.add(pExportBtns);
 
         return p;
     }
