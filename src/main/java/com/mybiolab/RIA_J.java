@@ -28,7 +28,7 @@ import java.util.ArrayList;
 
 /**
  * PROJECT: RIA-J (Ratio Imaging Analyzer - Java Edition)
- * VERSION: v1.0.6 (Fix: Self-Division Prevention & Smart Split)
+ * VERSION: v1.0.7 (Silent Split Mode: No extra windows)
  * AUTHOR: Kui Wang
  */
 public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemListener, ImageListener {
@@ -160,9 +160,9 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
     private void updatePreview(boolean reCalculateMath) {
         if (resultImp == null || imp1 == null || imp2 == null) return;
         
-        // [SAFETY CHECK] Prevent self-division
+        // Safety: Prevent self-division
         if (imp1 == imp2) {
-            IJ.showStatus("Warning: Numerator and Denominator are the same image!");
+            IJ.showStatus("Warning: Numerator and Denominator are the same!");
             return;
         }
 
@@ -182,11 +182,9 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
             }
         }
 
-        // Apply LUT first
         String lut = (String) comboLUT.getSelectedItem();
         IJ.run(resultImp, lut != null ? lut : "Fire", ""); 
         
-        // Force Display Range second
         resultImp.setDisplayRange(valMin, valMax); 
         resultImp.updateAndDraw();
         
@@ -198,8 +196,6 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         float[] p1 = (float[]) ip1.getPixels(); float[] p2 = (float[]) ip2.getPixels();
         float[] pRes = new float[p1.length];
         
-        double sum = 0; int count = 0; // Debug stats
-        
         for (int i = 0; i < p1.length; i++) {
             float v1 = p1[i] - (float)bg; float v2 = p2[i] - (float)bg;
             if (v1 < 0) v1 = 0; if (v2 < 0) v2 = 0; 
@@ -207,26 +203,14 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
             else {
                 float r = v1 / v2;
                 if (Float.isInfinite(r) || Float.isNaN(r)) pRes[i] = Float.NaN; 
-                else {
-                    pRes[i] = r;
-                    sum += r; count++;
-                }
+                else pRes[i] = r;
             }
         }
-        
-        // [DEBUG LOG] Print mean ratio to help user diagnose
-        if (count > 0 && !isBatchProcessing) {
-             IJ.log("RIA-J Debug: Mean Ratio = " + String.format("%.4f", sum/count));
-        }
-        
         return new FloatProcessor(width, height, pRes);
     }
 
     private void processEntireStack() {
-        if (imp1 == null || imp2 == null || imp1 == imp2) {
-            IJ.error("Invalid Input", "Please select two DIFFERENT images/channels.");
-            return;
-        }
+        if (imp1 == null || imp2 == null || imp1 == imp2) return;
 
         isBatchProcessing = true; 
         
@@ -390,7 +374,6 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
                 isUpdatingUI = true;
                 String lutName = (String) comboLUT.getSelectedItem();
                 
-                // Filter out separator
                 if (lutName == null || lutName.startsWith("---")) return;
                 
                 IJ.run(resultImp, lutName, "");
@@ -404,59 +387,45 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
     }
 
     // ========================================================================
-    // LOGIC BLOCK 4: Init & Utils (Improved)
+    // LOGIC BLOCK 4: Init & Utils (Silent Split)
     // ========================================================================
 
     private void refreshImageList() {
+        // [Feature] Silent Split: Get visible images but DON'T show split channels
         int[] ids = WindowManager.getIDList();
+        if (ids == null) ids = new int[0];
+
+        ArrayList<ImagePlus> list = new ArrayList<>();
         
-        // [IMPROVED] Handle Composite Auto-Split More Robustly
-        ArrayList<ImagePlus> splitImages = new ArrayList<>();
-        boolean didSplit = false;
-        
-        if (ids != null && ids.length == 1) {
-            ImagePlus imp = WindowManager.getImage(ids[0]);
-            if (imp != null && imp.isComposite()) {
-                IJ.showStatus("Auto-splitting composite...");
-                // Direct Split that returns array, safer than waiting for WindowManager
+        for (int id : ids) {
+            ImagePlus imp = WindowManager.getImage(id);
+            if (imp == null) continue;
+            
+            // Skip RIA windows
+            if (imp == resultImp || imp == impLegend) continue;
+            if (imp.getTitle().startsWith("RIA-") || imp.getTitle().startsWith("Legend")) continue;
+
+            if (imp.isComposite()) {
+                // [SILENT MODE] Split in memory, do NOT show
                 ImagePlus[] channels = ChannelSplitter.split(imp);
                 if (channels != null) {
                     for (ImagePlus c : channels) {
-                        c.show(); // Ensure they are visible
-                        splitImages.add(c);
+                        // Keep 'c' in memory for the dropdown, but do NOT call c.show()
+                        list.add(c);
                     }
-                    didSplit = true;
                 }
+                // We SKIP adding the original Composite to the dropdown to avoid confusion
+            } else {
+                // Standard single channel
+                list.add(imp);
             }
         }
 
-        // Re-fetch IDs if we didn't do a manual split object collection
-        if (!didSplit) {
-            ids = WindowManager.getIDList();
-            if (ids == null || ids.length == 0) {
-                IJ.error("RIA-J", "No images found!"); return;
-            }
-            for (int id : ids) {
-                ImagePlus imp = WindowManager.getImage(id);
-                if (imp != null) splitImages.add(imp);
-            }
+        if (list.isEmpty()) {
+            IJ.error("RIA-J", "No images found! Please open a composite or single images."); 
+            return;
         }
 
-        // Filter List
-        java.util.List<ImagePlus> list = new java.util.ArrayList<>();
-        for (ImagePlus imp : splitImages) {
-            if (imp == null) continue;
-            String t = imp.getTitle();
-            // Exclude Results, Legends, and the Original Composite if split happened
-            if (imp != resultImp && imp != impLegend && 
-                !t.startsWith("RIA-") && !t.startsWith("Legend")) {
-                 
-                 // If we split, try to ignore the original "Composite.tif" to avoid confusion
-                 if (didSplit && imp.isComposite()) continue;
-                 
-                 list.add(imp);
-            }
-        }
         availableImages = list.toArray(new ImagePlus[0]);
         
         if (resultImp == null) attemptRecoverResultImp();
@@ -464,29 +433,26 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         isUpdatingUI = true;
         comboNum.removeAllItems(); comboDen.removeAllItems();
         
-        if (availableImages.length > 0) {
-            for (ImagePlus imp : availableImages) {
-                String name = imp.getTitle();
-                if (name.length() > 20) name = name.substring(0, 17) + "...";
-                comboNum.addItem(name); comboDen.addItem(name);
-            }
-            
-            // [IMPROVED] Smart Default Selection
-            // 1. Numerator
-            comboNum.setSelectedIndex(0);
-            
-            // 2. Denominator: Try to pick a DIFFERENT one
-            if (availableImages.length > 1) {
-                comboDen.setSelectedIndex(1);
-            } else {
-                comboDen.setSelectedIndex(0); // Only 1 image exists
-            }
+        for (ImagePlus imp : availableImages) {
+            String name = imp.getTitle();
+            // Truncate long names for UI
+            if (name.length() > 25) name = name.substring(0, 22) + "...";
+            comboNum.addItem(name); comboDen.addItem(name);
         }
+        
+        // Smart Selection (C1 vs C2)
+        comboNum.setSelectedIndex(0);
+        if (availableImages.length > 1) {
+            comboDen.setSelectedIndex(1);
+        } else {
+            comboDen.setSelectedIndex(0);
+        }
+        
         isUpdatingUI = false;
         
         updateChannelReferences();
 
-        // Auto-Start only if distinct
+        // Auto Start if distinct channels found
         if (imp1 != null && imp2 != null && imp1 != imp2) {
              new Thread(() -> {
                 processEntireStack(); 
@@ -494,6 +460,7 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         }
     }
     
+    // Auto-scan all LUTs
     private String[] buildLutList() {
         String[] preferred = {
             "Fire", "Viridis", "Magma", "Ice", "Grays", "Green Fire Blue", "HiLo", "Jet"
@@ -731,6 +698,7 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         JLabel lblLut = new JLabel("LUT Color:  "); lblLut.setFont(FONT_NORMAL);
         pLut.add(lblLut);
         
+        // Use auto-scanned list
         String[] allLuts = buildLutList();
         
         comboLUT = new JComboBox<>(allLuts); 
