@@ -28,15 +28,15 @@ import java.util.ArrayList;
 
 /**
  * PROJECT: RIA-J (Ratio Imaging Analyzer - Java Edition)
- * VERSION: v1.0.8 (Added Swap Button & Recalculate Stack)
+ * VERSION: v1.0.9 (Direct Stack Swap & Unified Blue Theme)
  * AUTHOR: Kui Wang
  */
 public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemListener, ImageListener {
 
     // --- GUI Design Constants ---
+    // [UI] strictly limited to Blue (Input/Process) and Red (Output/Action)
     private static final Color COLOR_THEME_BLUE = new Color(0, 102, 204); 
     private static final Color COLOR_THEME_RED  = new Color(220, 50, 50); 
-    private static final Color COLOR_THEME_GREEN = new Color(34, 139, 34);
 
     // Fonts
     private static final Font FONT_NORMAL = new Font("SansSerif", Font.PLAIN, 12); 
@@ -50,14 +50,14 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
 
     // --- Components ---
     private JButton btnRefresh; 
-    private JButton btnSwap; // [NEW] Swap Button
+    private JButton btnSwap; 
     private JComboBox<String> comboNum, comboDen;
     private JSlider sliderBg, sliderThresh, sliderMin, sliderMax;
     private JSpinner spinBg, spinThresh, spinMin, spinMax; 
     private JComboBox<String> comboLUT;
     private JButton btnBarShow, btnBarClose; 
     private JButton btnSnapshot; 
-    private JButton btnRecalc; // [NEW] Recalculate/Show Stack Button
+    private JButton btnRecalc; 
     
     // --- Data Objects ---
     private ImagePlus[] availableImages;
@@ -323,9 +323,9 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         if (src == btnRefresh) {
             refreshImageList();
         } 
-        else if (src == btnSwap) { // [NEW] Swap Logic
+        else if (src == btnSwap) { 
             if (comboNum.getItemCount() > 1) {
-                isUpdatingUI = true; // Prevent premature triggering
+                isUpdatingUI = true; 
                 int idxNum = comboNum.getSelectedIndex();
                 int idxDen = comboDen.getSelectedIndex();
                 comboNum.setSelectedIndex(idxDen);
@@ -333,15 +333,23 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
                 updateChannelReferences();
                 isUpdatingUI = false;
                 
-                // Trigger update manually
+                // [IMPROVED SWAP LOGIC] 
                 if (imp1 != null && imp2 != null) {
                     IJ.showStatus("Swapped channels. Updating...");
-                    createInitialResult();
-                    updatePreview(true);
+                    
+                    if (imp1.getStackSize() > 1) {
+                        // If it's a stack, process the whole stack immediately
+                        // No snapshot, no preview, just the full stack result.
+                        new Thread(() -> processEntireStack()).start();
+                    } else {
+                        // If single image, just update the preview
+                        createInitialResult();
+                        updatePreview(true);
+                    }
                 }
             }
         }
-        else if (src == btnRecalc) { // [NEW] Recalculate/Show Stack
+        else if (src == btnRecalc) { 
              new Thread(() -> {
                 IJ.showStatus("Recalculating entire stack...");
                 processEntireStack(); 
@@ -661,11 +669,10 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         styleButton(btnRefresh, COLOR_THEME_BLUE); 
         btnRefresh.addActionListener(this);
         
-        btnSwap = new JButton("Swap ⇄"); // [NEW] Small swap button
+        btnSwap = new JButton("Swap ⇄"); 
         styleButton(btnSwap, Color.DARK_GRAY);
         btnSwap.addActionListener(this);
         
-        // Use a sub-panel for the two top buttons
         JPanel pTopBtns = new JPanel(new GridLayout(1, 2, 5, 0));
         pTopBtns.add(btnRefresh);
         pTopBtns.add(btnSwap);
@@ -758,12 +765,12 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         pBarBtns.add(btnBarShow); pBarBtns.add(btnBarClose);
         p.add(pBarBtns);
 
-        // Row 2: Recalculate & Snapshot [NEW BUTTONS]
+        // Row 2: Recalculate & Snapshot
         JPanel pExportBtns = new JPanel(new GridLayout(1, 2, 5, 0));
         pExportBtns.setBorder(new EmptyBorder(0, 2, 0, 2));
         
-        btnRecalc = new JButton("Recalculate Stack"); // [NEW]
-        styleButton(btnRecalc, COLOR_THEME_GREEN);
+        btnRecalc = new JButton("Recalculate Stack"); 
+        styleButton(btnRecalc, COLOR_THEME_BLUE); // [CHANGED to BLUE]
         btnRecalc.addActionListener(this);
         
         btnSnapshot = new JButton("Save as RGB");
