@@ -24,10 +24,11 @@ import java.awt.*;
 import java.awt.event.*;
 import java.awt.image.ColorModel;
 import java.net.URL;
+import java.util.ArrayList;
 
 /**
  * PROJECT: RIA-J (Ratio Imaging Analyzer - Java Edition)
- * VERSION: v1.0.0 (First Stable Version)
+ * VERSION: v1.0.6 (Fix: Self-Division Prevention & Smart Split)
  * AUTHOR: Kui Wang
  */
 public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemListener, ImageListener {
@@ -159,6 +160,12 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
     private void updatePreview(boolean reCalculateMath) {
         if (resultImp == null || imp1 == null || imp2 == null) return;
         
+        // [SAFETY CHECK] Prevent self-division
+        if (imp1 == imp2) {
+            IJ.showStatus("Warning: Numerator and Denominator are the same image!");
+            return;
+        }
+
         if (reCalculateMath) {
             int currentZ = resultImp.getCurrentSlice();
             if (currentZ > imp1.getStackSize()) currentZ = 1;
@@ -170,15 +177,18 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
             
             if (resultImp.getStackSize() > 1) {
                 resultImp.getStack().setProcessor(fpResult, currentZ);
-                resultImp.updateAndDraw(); 
             } else {
                 resultImp.setProcessor(fpResult);
             }
         }
 
-        resultImp.setDisplayRange(valMin, valMax); 
+        // Apply LUT first
         String lut = (String) comboLUT.getSelectedItem();
         IJ.run(resultImp, lut != null ? lut : "Fire", ""); 
+        
+        // Force Display Range second
+        resultImp.setDisplayRange(valMin, valMax); 
+        resultImp.updateAndDraw();
         
         if (isValidLegendOpen()) updateLegend();
     }
@@ -187,24 +197,40 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         int width = ip1.getWidth(); int height = ip1.getHeight();
         float[] p1 = (float[]) ip1.getPixels(); float[] p2 = (float[]) ip2.getPixels();
         float[] pRes = new float[p1.length];
+        
+        double sum = 0; int count = 0; // Debug stats
+        
         for (int i = 0; i < p1.length; i++) {
             float v1 = p1[i] - (float)bg; float v2 = p2[i] - (float)bg;
             if (v1 < 0) v1 = 0; if (v2 < 0) v2 = 0; 
             if (v2 < thresh) pRes[i] = Float.NaN; 
             else {
                 float r = v1 / v2;
-                if (Float.isInfinite(r) || Float.isNaN(r)) pRes[i] = Float.NaN; else pRes[i] = r;
+                if (Float.isInfinite(r) || Float.isNaN(r)) pRes[i] = Float.NaN; 
+                else {
+                    pRes[i] = r;
+                    sum += r; count++;
+                }
             }
         }
+        
+        // [DEBUG LOG] Print mean ratio to help user diagnose
+        if (count > 0 && !isBatchProcessing) {
+             IJ.log("RIA-J Debug: Mean Ratio = " + String.format("%.4f", sum/count));
+        }
+        
         return new FloatProcessor(width, height, pRes);
     }
 
     private void processEntireStack() {
+        if (imp1 == null || imp2 == null || imp1 == imp2) {
+            IJ.error("Invalid Input", "Please select two DIFFERENT images/channels.");
+            return;
+        }
+
         isBatchProcessing = true; 
         
         try {
-            if (imp1 == null || imp2 == null) return;
-
             int width = imp1.getWidth(); 
             int height = imp1.getHeight(); 
             int nSlices = imp1.getStackSize();
@@ -230,10 +256,12 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
                 String sourceName = getCleanTitle(imp1);
                 resultImp.setTitle("RIA-Result-" + sourceName);
                 
-                resultImp.setDisplayRange(valMin, valMax);
                 String lut = (String) comboLUT.getSelectedItem();
                 IJ.run(resultImp, lut != null ? lut : "Fire", ""); 
+                resultImp.setDisplayRange(valMin, valMax);
+                
                 resultImp.setSlice(1);
+                resultImp.updateAndDraw();
                 
                 if (isValidLegendOpen()) updateLegend();
                 IJ.showStatus("Finished!");
@@ -356,10 +384,19 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
     @Override
     public void itemStateChanged(ItemEvent e) {
         if (e.getStateChange() == ItemEvent.SELECTED && e.getSource() == comboLUT) {
+            if (resultImp == null) attemptRecoverResultImp();
+            
             if (resultImp != null) {
                 isUpdatingUI = true;
                 String lutName = (String) comboLUT.getSelectedItem();
+                
+                // Filter out separator
+                if (lutName == null || lutName.startsWith("---")) return;
+                
                 IJ.run(resultImp, lutName, "");
+                resultImp.setDisplayRange(valMin, valMax); 
+                resultImp.updateAndDraw(); 
+                
                 if (isValidLegendOpen()) updateLegend();
                 isUpdatingUI = false;
             }
@@ -367,46 +404,63 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
     }
 
     // ========================================================================
-    // LOGIC BLOCK 4: Init & Utils (Fixed for Multi-File)
+    // LOGIC BLOCK 4: Init & Utils (Improved)
     // ========================================================================
 
     private void refreshImageList() {
-        // 1. Get List of ALL Open Image IDs
         int[] ids = WindowManager.getIDList();
         
-        // 2. Intelligent Check: If User opened only ONE composite, split it for them.
-        // But if they opened multiple files (C1, C2), respect that.
+        // [IMPROVED] Handle Composite Auto-Split More Robustly
+        ArrayList<ImagePlus> splitImages = new ArrayList<>();
+        boolean didSplit = false;
+        
         if (ids != null && ids.length == 1) {
             ImagePlus imp = WindowManager.getImage(ids[0]);
             if (imp != null && imp.isComposite()) {
                 IJ.showStatus("Auto-splitting composite...");
-                ChannelSplitter.split(imp);
-                ids = WindowManager.getIDList(); // Refresh IDs after split
+                // Direct Split that returns array, safer than waiting for WindowManager
+                ImagePlus[] channels = ChannelSplitter.split(imp);
+                if (channels != null) {
+                    for (ImagePlus c : channels) {
+                        c.show(); // Ensure they are visible
+                        splitImages.add(c);
+                    }
+                    didSplit = true;
+                }
             }
         }
 
-        if (ids == null || ids.length == 0) {
-            IJ.error("RIA-J", "No images found!"); return;
+        // Re-fetch IDs if we didn't do a manual split object collection
+        if (!didSplit) {
+            ids = WindowManager.getIDList();
+            if (ids == null || ids.length == 0) {
+                IJ.error("RIA-J", "No images found!"); return;
+            }
+            for (int id : ids) {
+                ImagePlus imp = WindowManager.getImage(id);
+                if (imp != null) splitImages.add(imp);
+            }
         }
 
-        // 3. Populate List with EVERYTHING found (Filtered)
+        // Filter List
         java.util.List<ImagePlus> list = new java.util.ArrayList<>();
-        for (int id : ids) {
-            ImagePlus imp = WindowManager.getImage(id);
+        for (ImagePlus imp : splitImages) {
             if (imp == null) continue;
-            
             String t = imp.getTitle();
-            // Filter out RIA generated windows to prevent self-loop
+            // Exclude Results, Legends, and the Original Composite if split happened
             if (imp != resultImp && imp != impLegend && 
                 !t.startsWith("RIA-") && !t.startsWith("Legend")) {
-                list.add(imp);
+                 
+                 // If we split, try to ignore the original "Composite.tif" to avoid confusion
+                 if (didSplit && imp.isComposite()) continue;
+                 
+                 list.add(imp);
             }
         }
         availableImages = list.toArray(new ImagePlus[0]);
         
         if (resultImp == null) attemptRecoverResultImp();
 
-        // 4. Update UI Dropdowns
         isUpdatingUI = true;
         comboNum.removeAllItems(); comboDen.removeAllItems();
         
@@ -416,22 +470,54 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
                 if (name.length() > 20) name = name.substring(0, 17) + "...";
                 comboNum.addItem(name); comboDen.addItem(name);
             }
-            // Smart Selection: 
-            // If > 1 image, Select First for Num, Second for Den
+            
+            // [IMPROVED] Smart Default Selection
+            // 1. Numerator
             comboNum.setSelectedIndex(0);
-            if (availableImages.length > 1) comboDen.setSelectedIndex(1);
-            else comboDen.setSelectedIndex(0);
+            
+            // 2. Denominator: Try to pick a DIFFERENT one
+            if (availableImages.length > 1) {
+                comboDen.setSelectedIndex(1);
+            } else {
+                comboDen.setSelectedIndex(0); // Only 1 image exists
+            }
         }
         isUpdatingUI = false;
         
         updateChannelReferences();
 
-        // 5. Auto Start if valid
-        if (imp1 != null && imp2 != null) {
+        // Auto-Start only if distinct
+        if (imp1 != null && imp2 != null && imp1 != imp2) {
              new Thread(() -> {
                 processEntireStack(); 
             }).start();
         }
+    }
+    
+    private String[] buildLutList() {
+        String[] preferred = {
+            "Fire", "Viridis", "Magma", "Ice", "Grays", "Green Fire Blue", "HiLo", "Jet"
+        };
+        
+        String[] installed = IJ.getLuts(); 
+        if (installed == null) installed = new String[0];
+        
+        java.util.List<String> finalList = new java.util.ArrayList<>();
+        java.util.Set<String> added = new java.util.HashSet<>();
+        
+        for (String s : preferred) {
+            finalList.add(s);
+            added.add(s.toLowerCase());
+        }
+        
+        finalList.add("--------------------");
+        
+        for (String s : installed) {
+            if (!added.contains(s.toLowerCase())) {
+                finalList.add(s);
+            }
+        }
+        return finalList.toArray(new String[0]);
     }
 
     private void createInitialResult() {
@@ -639,12 +725,20 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         sliderMax = new JSlider(0, 1000, (int)(valMax * 100));
         setupSlider(sliderMax); linkSliderAndSpinner(sliderMax, spinMax, 0.01);
         gbc.gridx = 0; gbc.gridy = 3; p.add(sliderMax, gbc);
+
+        // --- LUT Selection ---
         JPanel pLut = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
         JLabel lblLut = new JLabel("LUT Color:  "); lblLut.setFont(FONT_NORMAL);
         pLut.add(lblLut);
-        String[] luts = {"Fire", "Jet", "Ice", "Spectrum", "Grays", "HiLo", "Red/Green", "Green Fire Blue", "Royal", "Cool"};
-        comboLUT = new JComboBox<>(luts); comboLUT.setFont(FONT_NORMAL); comboLUT.addItemListener(this);
+        
+        String[] allLuts = buildLutList();
+        
+        comboLUT = new JComboBox<>(allLuts); 
+        comboLUT.setFont(FONT_NORMAL); 
+        comboLUT.setMaximumRowCount(15); 
+        comboLUT.addItemListener(this);
         pLut.add(comboLUT);
+        
         gbc.gridx = 0; gbc.gridy = 4; gbc.insets = new Insets(4, 2, 2, 2);
         p.add(pLut, gbc);
         return p;

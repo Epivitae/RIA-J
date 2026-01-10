@@ -14,10 +14,54 @@
 
     <groupId>com.mybiolab</groupId>
     <artifactId>RIA_J</artifactId>
-    <version>1.0.0</version>
+    <version>1.0.6</version>
 
     <name>RIA-J</name>
-    <description>Ratio Imaging Analyzer - Java Edition</description>
+    <description>RIA-J is a publication-grade ImageJ/Fiji plugin for interactive ratiometric fluorescence analysis. It features "Direct Stack" processing, smart background masking, and one-click RGB export.</description>
+    
+    <url>https://github.com/Epivitae/RIA-J</url>
+    <inceptionYear>2026</inceptionYear>
+
+    <organization>
+        <name>Center for Excellence in Brain Science and Intelligence Technology (CEBSIT), CAS</name>
+        <url>http://www.cns.ac.cn/</url>
+    </organization>
+
+    <licenses>
+        <license>
+            <name>MIT License</name>
+            <url>https://opensource.org/licenses/MIT</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+
+    <developers>
+        <developer>
+            <id>Kui_Wang</id>
+            <name>Kui Wang</name>
+            <email>k@cns.ac.cn</email>
+            <url>https://github.com/Epivitae</url>
+            <organization>CEBSIT, CAS</organization>
+            <organizationUrl>http://www.cns.ac.cn/</organizationUrl>
+            <roles>
+                <role>architect</role>
+                <role>lead developer</role>
+            </roles>
+            <timezone>+8</timezone>
+        </developer>
+    </developers>
+
+    <scm>
+        <connection>scm:git:https://github.com/Epivitae/RIA-J.git</connection>
+        <developerConnection>scm:git:git@github.com:Epivitae/RIA-J.git</developerConnection>
+        <url>https://github.com/Epivitae/RIA-J</url>
+        <tag>HEAD</tag>
+    </scm>
+
+    <issueManagement>
+        <system>GitHub Issues</system>
+        <url>https://github.com/Epivitae/RIA-J/issues</url>
+    </issueManagement>
 
     <repositories>
         <repository>
