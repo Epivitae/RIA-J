@@ -27,24 +27,24 @@ import java.net.URL;
 
 /**
  * PROJECT: RIA-J (Ratio Imaging Analyzer - Java Edition)
- * VERSION: v0.17.0 (Modern UI - Blue/Red Theme)
+ * VERSION: v0.18.0 (Slim UI, Auto-Sync Export, No Apply Button)
  * AUTHOR: Kui Wang
  */
 public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemListener, ImageListener {
 
     // --- GUI Design Constants ---
-    // Extracting colors from the logo concept
-    private static final Color COLOR_THEME_BLUE = new Color(0, 102, 204); // Tech Blue
-    private static final Color COLOR_THEME_RED  = new Color(220, 50, 50); // Vibrant Red (Logo style)
+    private static final Color COLOR_THEME_BLUE = new Color(0, 102, 204); 
+    private static final Color COLOR_THEME_RED  = new Color(220, 50, 50); 
 
-    // Fonts - Using SansSerif for a cleaner look
+    // Fonts
     private static final Font FONT_NORMAL = new Font("SansSerif", Font.PLAIN, 12); 
     private static final Font FONT_BOLD   = new Font("SansSerif", Font.BOLD, 12);
     private static final Font FONT_TITLE  = new Font("SansSerif", Font.BOLD, 12); 
     private static final Font FONT_HEADER = new Font("SansSerif", Font.BOLD, 16); 
     private static final Font FONT_SMALL  = new Font("SansSerif", Font.PLAIN, 10); 
     
-    private static final int COMPONENT_WIDTH = 180; 
+    // [MODIFIED] Narrower width
+    private static final int COMPONENT_WIDTH = 150; 
     private static final int SLIDER_HEIGHT   = 18;  
 
     // --- Components ---
@@ -55,7 +55,7 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
     private JComboBox<String> comboLUT;
     private JButton btnBarShow, btnBarClose; 
     private JButton btnSnapshot; 
-    private JButton btnApply; 
+    // [REMOVED] btnApply
     
     // --- Data Objects ---
     private ImagePlus[] availableImages;
@@ -171,6 +171,7 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
             FloatProcessor fpResult = calculateRatioMath(ip1, ip2, valBg, valThresh);
             
             if (resultImp.getStackSize() > 1) {
+                // Only update current slice in the stack for performance
                 resultImp.getStack().setProcessor(fpResult, currentZ);
                 resultImp.updateAndDraw(); 
             } else {
@@ -201,14 +202,13 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         return new FloatProcessor(width, height, pRes);
     }
 
+    // Used for initial processing and internal syncing
     private void processEntireStack() {
         isBatchProcessing = true; 
         
         try {
-            if (imp1 == null || imp2 == null) { IJ.showMessage("Error", "No images selected!"); return; }
-            if (imp1.getStackSize() != imp2.getStackSize()) { IJ.showMessage("Error", "Stack size mismatch!"); return; }
+            if (imp1 == null || imp2 == null) return;
 
-            IJ.showStatus("Processing entire stack...");
             int width = imp1.getWidth(); 
             int height = imp1.getHeight(); 
             int nSlices = imp1.getStackSize();
@@ -216,33 +216,32 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
             ImageStack finalStack = new ImageStack(width, height);
             
             for (int z = 1; z <= nSlices; z++) {
-                IJ.showProgress(z, nSlices);
+                // Show progress only if called via thread (Import)
+                if(SwingUtilities.isEventDispatchThread() == false) IJ.showProgress(z, nSlices);
+                
                 ImageProcessor ip1 = imp1.getStack().getProcessor(z).convertToFloat();
                 ImageProcessor ip2 = imp2.getStack().getProcessor(z).convertToFloat();
                 FloatProcessor fp = calculateRatioMath(ip1, ip2, valBg, valThresh);
                 
                 String label = imp1.getStack().getSliceLabel(z);
-                if(label == null || label.isEmpty()) {
-                    label = "Ratio-" + z;
-                }
+                if(label == null || label.isEmpty()) label = "Ratio-" + z;
                 finalStack.addSlice(label, fp);
             }
 
-            SwingUtilities.invokeLater(() -> {
+            Runnable updateUI = () -> {
                 if (resultImp == null) createInitialResult();
                 resultImp.setStack(finalStack);
-                
                 String sourceName = getCleanTitle(imp1);
                 resultImp.setTitle("RIA-Result-" + sourceName);
-                
                 resultImp.setDisplayRange(valMin, valMax);
                 String lut = (String) comboLUT.getSelectedItem();
                 IJ.run(resultImp, lut != null ? lut : "Fire", ""); 
                 resultImp.setSlice(1);
-                
                 if (isValidLegendOpen()) updateLegend();
-                IJ.showStatus("Finished!");
-            });
+            };
+
+            if (SwingUtilities.isEventDispatchThread()) updateUI.run();
+            else SwingUtilities.invokeLater(updateUI);
             
         } catch (Exception e) {
             IJ.handleException(e);
@@ -251,45 +250,60 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         }
     }
     
+    // [Export Logic]
     private void createRGBSnapshot() {
         if (resultImp == null) attemptRecoverResultImp();
-        
-        if (resultImp == null) {
-            IJ.error("No result image found.");
-            return;
-        }
+        if (resultImp == null) { IJ.error("No result image found."); return; }
 
         boolean doStack = false;
         if (resultImp.getStackSize() > 1) {
             GenericDialog gd = new GenericDialog("Export Options");
-            gd.addMessage("You are processing a Multi-frame Stack.");
+            gd.addMessage("You are processing a Stack.");
             gd.addCheckbox("Convert Entire Stack (Movie)", true);
-            gd.setOKLabel("Export");
+            gd.setOKLabel("Export RGB");
             gd.showDialog();
             if (gd.wasCanceled()) return;
             doStack = gd.getNextBoolean();
         }
 
-        ImagePlus snapshot;
-        String currentTitle = resultImp.getTitle();
-        String baseName = currentTitle.replace("RIA-Result-", "");
-        
         if (doStack) {
-            IJ.showStatus("Converting stack to RGB...");
-            snapshot = resultImp.duplicate(); 
+            IJ.showStatus("Synchronizing stack...");
+            // [SYNC STEP] Ensure all frames use current sliders
+            // We run this synchronously here to ensure data is ready before duplication
+            isBatchProcessing = true;
+            try {
+                int nSlices = imp1.getStackSize();
+                ImageStack stack = resultImp.getStack();
+                for (int z = 1; z <= nSlices; z++) {
+                    IJ.showProgress(z, nSlices);
+                    ImageProcessor ip1 = imp1.getStack().getProcessor(z).convertToFloat();
+                    ImageProcessor ip2 = imp2.getStack().getProcessor(z).convertToFloat();
+                    FloatProcessor fp = calculateRatioMath(ip1, ip2, valBg, valThresh);
+                    stack.setProcessor(fp, z);
+                }
+            } catch(Exception e) { e.printStackTrace(); } 
+            finally { isBatchProcessing = false; }
+            
+            IJ.showStatus("Converting to RGB...");
+            ImagePlus snapshot = resultImp.duplicate(); 
+            String currentTitle = resultImp.getTitle();
+            String baseName = currentTitle.replace("RIA-Result-", "");
             snapshot.setTitle("RGB-Stack-" + baseName);
             snapshot.setDisplayRange(valMin, valMax);
             IJ.run(snapshot, "RGB Color", ""); 
+            snapshot.show();
+            
         } else {
             ImageProcessor currentIp = resultImp.getProcessor().duplicate();
-            snapshot = new ImagePlus("RGB-Snap-" + baseName, currentIp);
+            String currentTitle = resultImp.getTitle();
+            String baseName = currentTitle.replace("RIA-Result-", "");
+            ImagePlus snapshot = new ImagePlus("RGB-Snap-" + baseName, currentIp);
             snapshot.setDisplayRange(valMin, valMax);
             snapshot.setLut(resultImp.getProcessor().getLut());
             IJ.run(snapshot, "RGB Color", "");
+            snapshot.show();
         }
-        
-        snapshot.show();
-        IJ.showStatus("RGB Export Created.");
+        IJ.showStatus("Done.");
     }
 
     // ========================================================================
@@ -309,17 +323,6 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
                 createInitialResult(); 
                 updatePreview(true);   
             }
-        } 
-        else if (src == btnApply) {
-            new Thread(() -> {
-                SwingUtilities.invokeLater(() -> {
-                    btnApply.setEnabled(false); btnApply.setText("Processing...");
-                });
-                processEntireStack();
-                SwingUtilities.invokeLater(() -> {
-                    btnApply.setEnabled(true); btnApply.setText("<html><b>Apply to Stack</b></html>");
-                });
-            }).start();
         } 
         else if (src == btnBarShow) {
             if (resultImp == null) attemptRecoverResultImp(); 
@@ -418,13 +421,9 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
 
         if (imp1 != null && imp2 != null) {
              new Thread(() -> {
-                SwingUtilities.invokeLater(() -> {
-                    btnApply.setEnabled(false); btnApply.setText("Processing...");
-                });
+                // UI updates in thread need invokeLater if touching Swing
+                // But pure ImageJ status calls are fine
                 processEntireStack(); 
-                SwingUtilities.invokeLater(() -> {
-                    btnApply.setEnabled(true); btnApply.setText("<html><b>Apply to Stack</b></html>");
-                });
             }).start();
         }
     }
@@ -461,7 +460,7 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
     }
 
     // ========================================================================
-    // LOGIC BLOCK 5: Visualization (Legend)
+    // LOGIC BLOCK 5: Visualization
     // ========================================================================
 
     private void updateLegend() {
@@ -526,14 +525,14 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
     }
     
     // ========================================================================
-    // GUI Construction (Modernized)
+    // GUI Construction
     // ========================================================================
 
     private void buildGUI() {
         try { UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName()); } catch (Exception e) {}
         JPanel mainPanel = new JPanel();
         mainPanel.setLayout(new BoxLayout(mainPanel, BoxLayout.Y_AXIS));
-        mainPanel.setBorder(new EmptyBorder(8, 8, 8, 8)); // Little more breathing room
+        mainPanel.setBorder(new EmptyBorder(8, 8, 8, 8)); 
 
         mainPanel.add(createHeaderPanel());
         mainPanel.add(Box.createVerticalStrut(5)); 
@@ -555,8 +554,7 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
     private void styleButton(JButton btn, Color fgColor) {
         btn.setFont(FONT_BOLD);
         btn.setForeground(fgColor);
-        btn.setFocusPainted(false); // Modern: Remove dotted focus line
-        // btn.setBorder(BorderFactory.createLineBorder(fgColor)); // Optional: Custom border, but standard is often safer
+        btn.setFocusPainted(false); 
     }
 
     private JPanel createHeaderPanel() {
@@ -569,7 +567,7 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         JPanel pText = new JPanel(); pText.setLayout(new BoxLayout(pText, BoxLayout.Y_AXIS));
         JLabel lblTitle = new JLabel("RIA-J Controller"); 
         lblTitle.setFont(FONT_HEADER); 
-        lblTitle.setForeground(COLOR_THEME_BLUE); // Use Theme Blue
+        lblTitle.setForeground(COLOR_THEME_BLUE); 
         pText.add(lblTitle); pText.add(Box.createVerticalStrut(2)); 
         JLabel lblCopy = new JLabel("© 2026 www.cns.ac.cn"); 
         lblCopy.setFont(FONT_SMALL); 
@@ -584,7 +582,7 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         gbc.fill = GridBagConstraints.HORIZONTAL; gbc.insets = new Insets(2, 2, 2, 2); gbc.weightx = 1.0;
         
         btnRefresh = new JButton("Import / Refresh");
-        styleButton(btnRefresh, COLOR_THEME_BLUE); // THEME BLUE
+        styleButton(btnRefresh, COLOR_THEME_BLUE); 
         btnRefresh.addActionListener(this);
         
         gbc.gridx = 0; gbc.gridy = 0; gbc.gridwidth = 2; p.add(btnRefresh, gbc);
@@ -665,30 +663,23 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         pBarBtns.add(btnBarShow); pBarBtns.add(btnBarClose);
         p.add(pBarBtns);
 
-        // Row 2: Snapshot [UPDATED: Blue, Short Text]
+        // Row 2: Snapshot [RED - MAIN ACTION]
         btnSnapshot = new JButton("Save as RGB");
-        styleButton(btnSnapshot, COLOR_THEME_BLUE); // THEME BLUE
+        styleButton(btnSnapshot, COLOR_THEME_RED); 
+        btnSnapshot.setPreferredSize(new Dimension(COMPONENT_WIDTH, 35));
         btnSnapshot.addActionListener(this);
         p.add(Box.createVerticalStrut(5));
         p.add(btnSnapshot);
 
-        // Row 3: Apply [UPDATED: Theme Red]
-        btnApply = new JButton("<html><b>Apply to Stack</b></html>");
-        styleButton(btnApply, COLOR_THEME_RED); // THEME RED
-        btnApply.setPreferredSize(new Dimension(COMPONENT_WIDTH, 35)); 
-        btnApply.addActionListener(this);
-        p.add(Box.createVerticalStrut(5));
-        p.add(btnApply);
         return p;
     }
 
     private JPanel createTitledPanel(String title) {
         JPanel p = new JPanel(new GridBagLayout());
-        // Use Theme Blue for borders
         TitledBorder border = BorderFactory.createTitledBorder(
-                BorderFactory.createLineBorder(new Color(200, 200, 200)), title); // Cleaner line border
+                BorderFactory.createLineBorder(new Color(200, 200, 200)), title); 
         border.setTitleFont(FONT_TITLE); 
-        border.setTitleColor(COLOR_THEME_BLUE); // THEME BLUE
+        border.setTitleColor(COLOR_THEME_BLUE); 
         p.setBorder(border); 
         return p;
     }
