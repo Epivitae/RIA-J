@@ -28,7 +28,7 @@ import java.util.ArrayList;
 
 /**
  * PROJECT: RIA-J (Ratio Imaging Analyzer - Java Edition)
- * VERSION: v1.1.1 (UI Fix: Fixed Width & Layout Stability)
+ * VERSION: v1.2.1 (Fix: LUT Layout Visibility & Width 300px)
  * AUTHOR: Kui Wang
  */
 public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemListener, ImageListener {
@@ -37,6 +37,10 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
     private static final Color COLOR_THEME_BLUE = new Color(0, 102, 204); 
     private static final Color COLOR_THEME_RED  = new Color(220, 50, 50); 
 
+    // [UI FIX] User requested narrower window
+    private static final int WINDOW_WIDTH = 300; 
+    private static final int WINDOW_MIN_HEIGHT = 500; 
+
     // Fonts
     private static final Font FONT_NORMAL = new Font("SansSerif", Font.PLAIN, 12); 
     private static final Font FONT_BOLD   = new Font("SansSerif", Font.BOLD, 12);
@@ -44,13 +48,6 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
     private static final Font FONT_HEADER = new Font("SansSerif", Font.BOLD, 16); 
     private static final Font FONT_SMALL  = new Font("SansSerif", Font.PLAIN, 10); 
     
-    // [UI FIX 1] Increased component width to force a wider, consistent window
-    private static final int COMPONENT_WIDTH = 180; 
-    private static final int SLIDER_HEIGHT   = 15;  
-    
-    // [UI FIX 2] Fixed Main Panel Width
-    private static final int MAIN_PANEL_WIDTH = 340;
-
     // --- Components ---
     private JButton btnRefresh; 
     private JButton btnSwap; 
@@ -93,7 +90,7 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
     }
 
     // ========================================================================
-    // LOGIC BLOCK 1: Auto-Recovery & Window Management
+    // LOGIC BLOCK 1: Window Management
     // ========================================================================
     
     private void ensureResultImpExists() {
@@ -484,7 +481,7 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         
         for (ImagePlus imp : availableImages) {
             String name = imp.getTitle();
-            // Truncate logic handles logical string, panel width handles visual
+            // Truncate long names
             if (name.length() > 25) name = name.substring(0, 22) + "...";
             comboNum.addItem(name); comboDen.addItem(name);
         }
@@ -550,7 +547,6 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
     // LOGIC BLOCK 5: Visualization
     // ========================================================================
 
-    // (Code for updateLegend, isValidLegendOpen, close omitted for brevity but presumed same)
     private void updateLegend() {
         if (resultImp == null) return;
         int barW = 20; int barH = 200;
@@ -622,8 +618,8 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         mainPanel.setLayout(new BoxLayout(mainPanel, BoxLayout.Y_AXIS));
         mainPanel.setBorder(new EmptyBorder(8, 8, 8, 8)); 
         
-        // [UI FIX 2] Force fixed width for consistency
-        mainPanel.setPreferredSize(new Dimension(MAIN_PANEL_WIDTH, 0));
+        // [FIX] Force Exact 300px Width
+        mainPanel.add(Box.createRigidArea(new Dimension(WINDOW_WIDTH, 10)));
 
         mainPanel.add(createHeaderPanel());
         mainPanel.add(Box.createVerticalStrut(5)); 
@@ -638,6 +634,11 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
 
         add(mainPanel);
         pack();
+        
+        // [FIX] Force exact Width AND Minimum Height
+        int finalH = Math.max(getHeight(), WINDOW_MIN_HEIGHT);
+        setSize(WINDOW_WIDTH, finalH);
+        
         GUI.center(this);
         setVisible(true);
     }
@@ -672,7 +673,7 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.fill = GridBagConstraints.HORIZONTAL; gbc.insets = new Insets(2, 2, 2, 2); gbc.weightx = 1.0;
         
-        btnRefresh = new JButton("Import / Refresh");
+        btnRefresh = new JButton("Import");
         styleButton(btnRefresh, COLOR_THEME_BLUE); 
         btnRefresh.addActionListener(this);
         
@@ -690,7 +691,6 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         JLabel lblNum = new JLabel("Numerator:"); lblNum.setFont(FONT_NORMAL);
         gbc.gridx = 0; gbc.gridy = 1; p.add(lblNum, gbc);
         comboNum = new JComboBox<>(); comboNum.setFont(FONT_NORMAL); comboNum.addActionListener(this); 
-        // [UI FIX 3] Limit dropdown width to avoid window explosion
         comboNum.setPreferredSize(new Dimension(150, 25));
         gbc.gridx = 1; gbc.gridy = 1; p.add(comboNum, gbc);
         
@@ -702,56 +702,98 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         return p;
     }
 
+    // [UI FIX] New Helper to create "Label - Slider - Spinner" in ONE ROW
+    private JPanel createCompactRow(String labelText, JSlider slider, JSpinner spinner) {
+        JPanel p = new JPanel(new GridBagLayout());
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(0, 2, 0, 2); 
+        gbc.fill = GridBagConstraints.BOTH;
+        
+        // 1. Label
+        JLabel lbl = new JLabel(labelText);
+        lbl.setFont(FONT_NORMAL);
+        lbl.setPreferredSize(new Dimension(35, 20)); 
+        gbc.gridx = 0; gbc.weightx = 0;
+        p.add(lbl, gbc);
+        
+        // 2. Slider
+        slider.setPreferredSize(new Dimension(100, 20)); 
+        slider.setPaintTicks(false);  
+        slider.setPaintLabels(false); 
+        gbc.gridx = 1; gbc.weightx = 1.0;
+        p.add(slider, gbc);
+        
+        // 3. Spinner
+        spinner.setFont(FONT_NORMAL);
+        JComponent editor = spinner.getEditor();
+        if (editor instanceof JSpinner.DefaultEditor) {
+            ((JSpinner.DefaultEditor)editor).getTextField().setColumns(3);
+        }
+        spinner.setPreferredSize(new Dimension(50, 20));
+        gbc.gridx = 2; gbc.weightx = 0;
+        p.add(spinner, gbc);
+        
+        return p;
+    }
+
     private JPanel createCalcPanel() {
         JPanel p = createTitledPanel("Calculation Parameters");
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.fill = GridBagConstraints.HORIZONTAL; gbc.insets = new Insets(2, 2, 2, 2); gbc.weightx = 1.0;
-        JPanel pBgRow = createLabelSpinnerPanel("Background:", 0, 1000, valBg, false);
-        spinBg = (JSpinner) pBgRow.getComponent(1);
-        gbc.gridx = 0; gbc.gridy = 0; p.add(pBgRow, gbc);
+        p.setLayout(new BoxLayout(p, BoxLayout.Y_AXIS));
+        
         sliderBg = new JSlider(0, 1000, valBg);
-        setupSlider(sliderBg); linkSliderAndSpinner(sliderBg, spinBg, 1.0);
-        gbc.gridx = 0; gbc.gridy = 1; p.add(sliderBg, gbc);
-        JPanel pThRow = createLabelSpinnerPanel("NaN Threshold:", 0, 5000, valThresh, false);
-        spinThresh = (JSpinner) pThRow.getComponent(1);
-        gbc.gridx = 0; gbc.gridy = 2; p.add(pThRow, gbc);
+        spinBg = new JSpinner(new SpinnerNumberModel(valBg, 0, 1000, 1));
+        linkSliderAndSpinner(sliderBg, spinBg, 1.0);
+        p.add(createCompactRow("Bg:", sliderBg, spinBg));
+        
+        p.add(Box.createVerticalStrut(5)); 
+        
         sliderThresh = new JSlider(0, 1000, valThresh);
-        setupSlider(sliderThresh); linkSliderAndSpinner(sliderThresh, spinThresh, 1.0);
-        gbc.gridx = 0; gbc.gridy = 3; p.add(sliderThresh, gbc);
+        spinThresh = new JSpinner(new SpinnerNumberModel(valThresh, 0, 5000, 1));
+        linkSliderAndSpinner(sliderThresh, spinThresh, 1.0);
+        p.add(createCompactRow("NaN:", sliderThresh, spinThresh));
+        
         return p;
     }
 
     private JPanel createVisPanel() {
         JPanel p = createTitledPanel("Visualization");
+        p.setLayout(new GridBagLayout()); 
         GridBagConstraints gbc = new GridBagConstraints();
-        gbc.fill = GridBagConstraints.HORIZONTAL; gbc.insets = new Insets(2, 2, 2, 2); gbc.weightx = 1.0;
-        JPanel pMinRow = createLabelSpinnerPanel("Min Ratio:", 0.0, 10.0, valMin, true);
-        spinMin = (JSpinner) pMinRow.getComponent(1);
-        gbc.gridx = 0; gbc.gridy = 0; p.add(pMinRow, gbc);
+        gbc.fill = GridBagConstraints.HORIZONTAL; 
+        gbc.weightx = 1.0; gbc.gridx = 0;
+        
+        // 1. Min/Max
         sliderMin = new JSlider(0, 1000, (int)(valMin * 100));
-        setupSlider(sliderMin); linkSliderAndSpinner(sliderMin, spinMin, 0.01);
-        gbc.gridx = 0; gbc.gridy = 1; p.add(sliderMin, gbc);
-        JPanel pMaxRow = createLabelSpinnerPanel("Max Ratio:", 0.0, 20.0, valMax, true);
-        spinMax = (JSpinner) pMaxRow.getComponent(1);
-        gbc.gridx = 0; gbc.gridy = 2; p.add(pMaxRow, gbc);
+        spinMin = new JSpinner(new SpinnerNumberModel(valMin, 0.0, 10.0, 0.1));
+        linkSliderAndSpinner(sliderMin, spinMin, 0.01);
+        gbc.gridy = 0; p.add(createCompactRow("Min:", sliderMin, spinMin), gbc);
+        
+        gbc.gridy = 1; p.add(Box.createVerticalStrut(5), gbc);
+        
         sliderMax = new JSlider(0, 1000, (int)(valMax * 100));
-        setupSlider(sliderMax); linkSliderAndSpinner(sliderMax, spinMax, 0.01);
-        gbc.gridx = 0; gbc.gridy = 3; p.add(sliderMax, gbc);
+        spinMax = new JSpinner(new SpinnerNumberModel(valMax, 0.0, 20.0, 0.1));
+        linkSliderAndSpinner(sliderMax, spinMax, 0.01);
+        gbc.gridy = 2; p.add(createCompactRow("Max:", sliderMax, spinMax), gbc);
 
-        // --- LUT Selection ---
-        JPanel pLut = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
-        JLabel lblLut = new JLabel("LUT Color:  "); lblLut.setFont(FONT_NORMAL);
-        pLut.add(lblLut);
+        gbc.gridy = 3; p.add(Box.createVerticalStrut(8), gbc);
+
+        // 2. LUT Selection (Fixed: BorderLayout forces combo to fill)
+        JPanel pLut = new JPanel(new BorderLayout(5, 0)); 
+        JLabel lblLut = new JLabel("LUT Color:"); lblLut.setFont(FONT_NORMAL);
+        pLut.add(lblLut, BorderLayout.WEST);
         
         String[] allLuts = buildLutList();
         comboLUT = new JComboBox<>(allLuts); 
         comboLUT.setFont(FONT_NORMAL); 
         comboLUT.setMaximumRowCount(15); 
         comboLUT.addItemListener(this);
-        pLut.add(comboLUT);
+        // Force width to prevent expansion
+        comboLUT.setPreferredSize(new Dimension(10, 22)); 
+        pLut.add(comboLUT, BorderLayout.CENTER);
         
-        gbc.gridx = 0; gbc.gridy = 4; gbc.insets = new Insets(4, 2, 2, 2);
+        gbc.gridy = 4;
         p.add(pLut, gbc);
+        
         return p;
     }
 
@@ -776,7 +818,7 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         JPanel pExportBtns = new JPanel(new GridLayout(1, 2, 5, 0));
         pExportBtns.setBorder(new EmptyBorder(0, 2, 0, 2));
         
-        btnRecalc = new JButton("Recalculate Stack"); 
+        btnRecalc = new JButton("Recalculate"); 
         styleButton(btnRecalc, COLOR_THEME_BLUE); 
         btnRecalc.addActionListener(this);
         
@@ -801,17 +843,6 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         border.setTitleColor(COLOR_THEME_BLUE); 
         p.setBorder(border); 
         return p;
-    }
-
-    private void setupSlider(JSlider slider) { slider.setPreferredSize(new Dimension(COMPONENT_WIDTH, SLIDER_HEIGHT)); }
-    
-    private JPanel createLabelSpinnerPanel(String text, double min, double max, double current, boolean isDouble) {
-        JPanel p = new JPanel(new BorderLayout());
-        JLabel lbl = new JLabel(text); lbl.setFont(FONT_NORMAL);
-        SpinnerModel model = isDouble ? new SpinnerNumberModel(current, min, max, 0.1) : new SpinnerNumberModel((int)current, (int)min, (int)max, 1);
-        JSpinner spinner = new JSpinner(model); spinner.setFont(FONT_NORMAL);
-        ((JSpinner.DefaultEditor) spinner.getEditor()).getTextField().setColumns(4); 
-        p.add(lbl, BorderLayout.WEST); p.add(spinner, BorderLayout.EAST); return p;
     }
 
     public static void main(String[] args) {
