@@ -23,7 +23,7 @@
 It empowers researchers to perform **Background Subtraction**, **Dynamic Masking**, and **Real-time Ratio Calculation** through a modern, user-friendly dashboard, eliminating the need for complex macro scripting.
 
 <div align="center">
-  <img src="images/ria-j-main.png" width="50%">
+  <img src="images/ria-j-main.png" width="80%">
 </div>
 
 
