@@ -2,32 +2,35 @@ name: Sync to GitCode
 
 on:
   push:
-    branches: [ main, master ] # 当主分支有代码推送时触发同步
-  workflow_dispatch:          # 允许手动触发同步
+    branches: [ main, master ]
+  workflow_dispatch:
 
 jobs:
-  repo-sync:
+  build:
     runs-on: ubuntu-latest
     steps:
-      - name: Mirror the GitHub repo to GitCode
-        uses: Yikun/hub-mirror-action@master
+      # 第一步：把 GitHub 的代码拉取到 Action 运行环境
+      - name: Checkout GitHub Repository
+        uses: actions/checkout@v4
         with:
-          # 源端（GitHub）信息
-          src: github/RIA-J
-          # 关键修改：增加 GitHub 端的访问凭证
-          src_token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0 # 拉取所有分支和历史，确保同步完整
+
+      # 第二步：强制推送到 GitCode
+      - name: Push to GitCode
+        env:
+          GITCODE_USER: "RIA-J" # 确认这是你的 GitCode 用户名
+          GITCODE_TOKEN: ${{ secrets.GITCODE_TOKEN }}
+        run: |
+          # 构造带 Token 的远端地址 (隐藏 Token 输出)
+          REMOTE_URL="https://${GITCODE_USER}:${GITCODE_TOKEN}@gitcode.com/${GITCODE_USER}/RIA-J.git"
           
-          # 目的端（GitCode）信息
-          dst: gitcode/RIA-J
-          # 这里的 dst_key 通常用于 SSH 方式，如果只用 Token 方式，保留 dst_token 即可
-          # 如果之前配置了 Secret 为 GITCODE_TOKEN，请确保变量名一致
-          dst_token: ${{ secrets.GITCODE_TOKEN }}
+          # 添加 GitCode 远端
+          git remote add gitcode "$REMOTE_URL"
           
-          # 静态同步列表
-          static_list: "RIA-J"
-          # 账号类型，个人用户设为 user，组织设为 org
-          account_type: user
-          # 强制更新，覆盖目的端代码
-          force_update: true
-          # 开启调试模式，方便出错时排查
-          debug: true
+          # 获取当前分支名称
+          CURRENT_BRANCH=$(git branch --show-current)
+          
+          echo "Starting push to GitCode branch: $CURRENT_BRANCH..."
+          
+          # 强制推送当前分支到 GitCode
+          git push gitcode "$CURRENT_BRANCH" --force
