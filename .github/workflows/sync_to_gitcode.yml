@@ -14,13 +14,20 @@ jobs:
         with:
           # 源端（GitHub）信息
           src: github/RIA-J
+          # 关键修改：增加 GitHub 端的访问凭证
+          src_token: ${{ secrets.GITHUB_TOKEN }}
+          
           # 目的端（GitCode）信息
           dst: gitcode/RIA-J
-          # 目的端访问令牌
-          dst_key: ${{ secrets.GITCODE_TOKEN }}
+          # 这里的 dst_key 通常用于 SSH 方式，如果只用 Token 方式，保留 dst_token 即可
+          # 如果之前配置了 Secret 为 GITCODE_TOKEN，请确保变量名一致
           dst_token: ${{ secrets.GITCODE_TOKEN }}
-          # 静态地址，GitCode 的 Git 基础地址
+          
+          # 静态同步列表
           static_list: "RIA-J"
+          # 账号类型，个人用户设为 user，组织设为 org
           account_type: user
+          # 强制更新，覆盖目的端代码
           force_update: true
+          # 开启调试模式，方便出错时排查
           debug: true
