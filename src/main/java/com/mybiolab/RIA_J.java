@@ -28,7 +28,7 @@ import java.util.ArrayList;
 
 /**
  * PROJECT: RIA-J (Ratio Imaging Analyzer - Java Edition)
- * VERSION: v2.0.0: Major UI/UX Overhaul & Silent Processing
+ * VERSION: v2.1.0 (Added Clear Button for Workflow Reset)
  * AUTHOR: Kui Wang
  */
 public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemListener, ImageListener {
@@ -51,6 +51,7 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
     // --- Components ---
     private JButton btnRefresh; 
     private JButton btnSwap; 
+    private JButton btnClear; // [NEW]
     private JComboBox<String> comboNum, comboDen;
     private JSlider sliderBg, sliderThresh, sliderMin, sliderMax;
     private JSpinner spinBg, spinThresh, spinMin, spinMax; 
@@ -88,9 +89,6 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
             refreshImageList();
         }
     }
-
-
-
 
     // ========================================================================
     // LOGIC BLOCK 1: Window Management
@@ -352,12 +350,47 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
     // LOGIC BLOCK 3: UI Events
     // ========================================================================
 
+    // [NEW] Logic to perform total reset
+    private void performClear() {
+        isUpdatingUI = true; // Lock events
+        
+        // 1. Reset Data
+        imp1 = null; imp2 = null; availableImages = null;
+        resultImp = null; // Detach from current result
+        
+        // 2. Clear Dropdowns
+        comboNum.removeAllItems();
+        comboDen.removeAllItems();
+        
+        // 3. Reset Params & UI
+        valBg = 20; 
+        spinBg.setValue(20); sliderBg.setValue(20);
+        
+        valThresh = 50; 
+        spinThresh.setValue(50); sliderThresh.setValue(50);
+        
+        valMin = 0.0; 
+        spinMin.setValue(0.0); sliderMin.setValue(0);
+        
+        valMax = 5.0; 
+        spinMax.setValue(5.0); sliderMax.setValue(500);
+        
+        comboLUT.setSelectedItem("Fire");
+        
+        isUpdatingUI = false; // Unlock
+        
+        IJ.showStatus("Plugin reset. Ready for new data.");
+    }
+
     @Override
     public void actionPerformed(ActionEvent e) {
         Object src = e.getSource();
         
         if (src == btnRefresh) {
             refreshImageList(); 
+        }
+        else if (src == btnClear) { // [NEW]
+            performClear();
         } 
         else if (src == btnSwap) { 
             if (comboNum.getItemCount() > 1) {
@@ -676,6 +709,11 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.fill = GridBagConstraints.HORIZONTAL; gbc.insets = new Insets(2, 2, 2, 2); gbc.weightx = 1.0;
         
+        // [NEW] Clear Button
+        btnClear = new JButton("Clear");
+        styleButton(btnClear, Color.GRAY); // Neutral gray
+        btnClear.addActionListener(this);
+
         btnRefresh = new JButton("Import");
         styleButton(btnRefresh, COLOR_THEME_BLUE); 
         btnRefresh.addActionListener(this);
@@ -684,9 +722,11 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         styleButton(btnSwap, Color.DARK_GRAY);
         btnSwap.addActionListener(this);
         
-        JPanel pTopBtns = new JPanel(new GridLayout(1, 2, 5, 0));
-        pTopBtns.add(btnRefresh);
-        pTopBtns.add(btnSwap);
+        // [UI] Grid for 3 buttons
+        JPanel pTopBtns = new JPanel(new GridLayout(1, 3, 5, 0));
+        pTopBtns.add(btnClear); // Left
+        pTopBtns.add(btnRefresh); // Center
+        pTopBtns.add(btnSwap); // Right
         
         gbc.gridx = 0; gbc.gridy = 0; gbc.gridwidth = 2; p.add(pTopBtns, gbc);
         
@@ -790,7 +830,6 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         comboLUT.setFont(FONT_NORMAL); 
         comboLUT.setMaximumRowCount(15); 
         comboLUT.addItemListener(this);
-        // Force width to prevent expansion
         comboLUT.setPreferredSize(new Dimension(10, 22)); 
         pLut.add(comboLUT, BorderLayout.CENTER);
         
