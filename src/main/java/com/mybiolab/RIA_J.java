@@ -28,7 +28,7 @@ import java.util.ArrayList;
 
 /**
  * PROJECT: RIA-J (Ratio Imaging Analyzer - Java Edition)
- * VERSION: v1.2.1 (Fix: LUT Layout Visibility & Width 300px)
+ * VERSION: v2.0.0: Major UI/UX Overhaul & Silent Processing
  * AUTHOR: Kui Wang
  */
 public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemListener, ImageListener {
@@ -91,7 +91,7 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
 
 
 
-    
+
     // ========================================================================
     // LOGIC BLOCK 1: Window Management
     // ========================================================================
