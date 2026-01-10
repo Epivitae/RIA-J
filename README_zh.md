@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="images/app_ico.png" alt="RIA-J Logo" width="100"/>
+<img src="images/RIA-J.png" alt="RIA-J Logo" width="130"/>
 
 # RIA-J：ImageJ/Fiji 专属的比率荧光分析神器
 **(Ratio Imaging Analyzer for Java)**

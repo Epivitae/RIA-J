@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="images/app_ico.png" alt="RIA-J Logo" width="120"/>
+<img src="images/RIA-J.png" alt="RIA-J Logo" width="130"/>
 
 # RIA-J: Ratio Imaging Analyzer (Java)
 
