@@ -6,6 +6,7 @@ import ij.ImageListener;
 import ij.ImagePlus;
 import ij.ImageStack;
 import ij.WindowManager;
+import ij.gui.GenericDialog; 
 import ij.gui.GUI; 
 import ij.plugin.ChannelSplitter;
 import ij.plugin.PlugIn;
@@ -26,7 +27,7 @@ import java.net.URL;
 
 /**
  * PROJECT: RIA-J (Ratio Imaging Analyzer - Java Edition)
- * VERSION: v0.8.0 (Robust Workflow & Logic Fixes)
+ * VERSION: v0.12.0 (Auto-Recovery & Smart RGB Stack)
  * AUTHOR: Kui Wang
  */
 public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemListener, ImageListener {
@@ -48,18 +49,19 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
     private JSpinner spinBg, spinThresh, spinMin, spinMax; 
     private JComboBox<String> comboLUT;
     private JButton btnBarShow, btnBarClose; 
+    private JButton btnSnapshot; 
     private JButton btnApply; 
     
     // --- Data Objects ---
     private ImagePlus[] availableImages;
-    private ImagePlus imp1;           // Numerator (Source A)
-    private ImagePlus imp2;           // Denominator (Source B)
-    private ImagePlus resultImp;      // The Result (MUST be 32-bit Float)
-    private ImagePlus impLegend;      // The Legend (MUST be RGB)
+    private ImagePlus imp1;           
+    private ImagePlus imp2;           
+    private ImagePlus resultImp;      // 32-bit Raw Data
+    private ImagePlus impLegend;      // RGB Legend
     
     // --- State Flags ---
-    private boolean isUpdatingUI = false;      // UI正在自我更新，防止回环
-    private boolean isBatchProcessing = false; // [重要] 正在批处理，禁止监听器干扰
+    private boolean isUpdatingUI = false;      
+    private boolean isBatchProcessing = false; 
 
     // --- Parameters ---
     private int valBg = 20;
@@ -69,7 +71,7 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
 
     public RIA_J() {
         super("RIA-J (Ratio Processor)"); 
-        ImagePlus.addImageListener(this); // Register Listener
+        ImagePlus.addImageListener(this); 
     }
 
     @Override
@@ -81,9 +83,38 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
     }
 
     // ========================================================================
-    // LOGIC BLOCK 1: ImageListener (The Watchdog)
+    // LOGIC BLOCK 1: Auto-Recovery & Listeners
     // ========================================================================
     
+    /**
+     * [CORE FIX] Try to find an orphaned Result window if we lost the reference
+     * (e.g. after plugin restart).
+     */
+    private void attemptRecoverResultImp() {
+        if (resultImp != null && resultImp.isVisible()) return; // Already good
+
+        int[] ids = WindowManager.getIDList();
+        if (ids == null) return;
+        
+        for (int id : ids) {
+            ImagePlus imp = WindowManager.getImage(id);
+            // Look for window title starting with our signature
+            if (imp != null && imp.getTitle().startsWith("RIA-J Result")) {
+                resultImp = imp;
+                IJ.showStatus("Recovered connection to: " + imp.getTitle());
+                // Sync UI to this recovered image
+                isUpdatingUI = true;
+                valMin = resultImp.getDisplayRangeMin();
+                valMax = resultImp.getDisplayRangeMax();
+                spinMin.setValue(valMin);
+                spinMax.setValue(valMax);
+                syncSlidersFromValues();
+                isUpdatingUI = false;
+                break; 
+            }
+        }
+    }
+
     @Override
     public void imageOpened(ImagePlus imp) {}
 
@@ -95,46 +126,34 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
 
     @Override
     public void imageUpdated(ImagePlus imp) {
-        // [核心修复] 如果正在批处理，或者正在更新UI，监听器闭嘴
         if (isBatchProcessing || isUpdatingUI) return;
 
-        // 只关心结果图的变化
         if (imp == resultImp) {
             double curDisplayMin = imp.getDisplayRangeMin();
             double curDisplayMax = imp.getDisplayRangeMax();
 
-            // 检测 ImageJ 内部的 Contrast 变化 (如 Ctrl+Shift+C)
+            // Two-way sync: ImageJ B&C -> Plugin UI
             if (Math.abs(curDisplayMin - valMin) > 0.001 || Math.abs(curDisplayMax - valMax) > 0.001) {
-                isUpdatingUI = true; // 锁住UI
-
-                // 1. 同步数据
+                isUpdatingUI = true; 
                 valMin = curDisplayMin;
                 valMax = curDisplayMax;
-
-                // 2. 同步 UI 控件
                 spinMin.setValue(valMin);
                 spinMax.setValue(valMax);
                 syncSlidersFromValues();
-
-                // 3. 同步 Legend (纯视觉)
+                
                 if (isValidLegendOpen()) updateLegend();
-
-                isUpdatingUI = false; // 解锁
+                isUpdatingUI = false; 
             }
         }
     }
 
     // ========================================================================
-    // LOGIC BLOCK 2: Core Processing (Math vs Display)
+    // LOGIC BLOCK 2: Core Processing
     // ========================================================================
 
-    /**
-     * 预览更新：计算单帧 + 更新显示
-     */
     private void updatePreview(boolean reCalculateMath) {
         if (resultImp == null || imp1 == null || imp2 == null) return;
         
-        // 1. Math Step (只有参数变了才重算，如果是只改了LUT或MinMax，其实不需要这一步，但为了简单这里保留)
         if (reCalculateMath) {
             int currentZ = resultImp.getCurrentSlice();
             if (currentZ > imp1.getStackSize()) currentZ = 1;
@@ -146,50 +165,31 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
             resultImp.setProcessor(fpResult);
         }
 
-        // 2. Display Step (Pure Visuals)
-        resultImp.setDisplayRange(valMin, valMax); // 核心：设置32位图的显示范围
-        
+        resultImp.setDisplayRange(valMin, valMax); 
         String lut = (String) comboLUT.getSelectedItem();
         IJ.run(resultImp, lut != null ? lut : "Fire", ""); 
         
-        // 3. Legend Step
         if (isValidLegendOpen()) updateLegend();
     }
 
-    /**
-     * 纯数学计算：输入两个Processor，返回一个32-bit FloatProcessor
-     */
     private FloatProcessor calculateRatioMath(ImageProcessor ip1, ImageProcessor ip2, double bg, double thresh) {
-        int width = ip1.getWidth(); 
-        int height = ip1.getHeight();
-        float[] p1 = (float[]) ip1.getPixels(); 
-        float[] p2 = (float[]) ip2.getPixels();
+        int width = ip1.getWidth(); int height = ip1.getHeight();
+        float[] p1 = (float[]) ip1.getPixels(); float[] p2 = (float[]) ip2.getPixels();
         float[] pRes = new float[p1.length];
-        
         for (int i = 0; i < p1.length; i++) {
-            float v1 = p1[i] - (float)bg; 
-            float v2 = p2[i] - (float)bg;
-            
-            if (v1 < 0) v1 = 0; 
-            if (v2 < 0) v2 = 0; // Negative handling
-            
-            if (v2 < thresh) {
-                pRes[i] = Float.NaN; // Mask background
-            } else {
+            float v1 = p1[i] - (float)bg; float v2 = p2[i] - (float)bg;
+            if (v1 < 0) v1 = 0; if (v2 < 0) v2 = 0; 
+            if (v2 < thresh) pRes[i] = Float.NaN; 
+            else {
                 float r = v1 / v2;
-                if (Float.isInfinite(r) || Float.isNaN(r)) pRes[i] = Float.NaN; 
-                else pRes[i] = r;
+                if (Float.isInfinite(r) || Float.isNaN(r)) pRes[i] = Float.NaN; else pRes[i] = r;
             }
         }
         return new FloatProcessor(width, height, pRes);
     }
 
-    /**
-     * 批处理逻辑：处理整个栈
-     */
     private void processEntireStack() {
-        // [逻辑锁] 标记开始
-        isBatchProcessing = true;
+        isBatchProcessing = true; 
         
         try {
             if (imp1 == null || imp2 == null) { IJ.showMessage("Error", "No images selected!"); return; }
@@ -204,45 +204,83 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
             
             for (int z = 1; z <= nSlices; z++) {
                 IJ.showProgress(z, nSlices);
-                
                 ImageProcessor ip1 = imp1.getStack().getProcessor(z).convertToFloat();
                 ImageProcessor ip2 = imp2.getStack().getProcessor(z).convertToFloat();
-                
-                // Pure Math
                 FloatProcessor fp = calculateRatioMath(ip1, ip2, valBg, valThresh);
-                // 这里不要 setMinMax，等到最后统一设置，或者每张都设
-                fp.setMinAndMax(valMin, valMax); 
-                
                 String label = imp1.getStack().getSliceLabel(z);
                 if(label == null) label = "Ratio " + z;
                 finalStack.addSlice(label, fp);
             }
-            
-            // 更新结果图 (32-bit)
-            resultImp.setStack(finalStack);
-            resultImp.setTitle("RIA-J Result (Final)");
-            
-            // 应用显示设置
-            resultImp.setDisplayRange(valMin, valMax);
-            String lut = (String) comboLUT.getSelectedItem();
-            IJ.run(resultImp, lut != null ? lut : "Fire", ""); 
-            resultImp.setSlice(1);
-            
-            // 更新图例
-            if (isValidLegendOpen()) updateLegend();
-            
-            IJ.showStatus("Finished!");
+
+            SwingUtilities.invokeLater(() -> {
+                if (resultImp == null) createInitialResult();
+                
+                resultImp.setStack(finalStack);
+                resultImp.setTitle("RIA-J Result (Final)");
+                
+                resultImp.setDisplayRange(valMin, valMax);
+                String lut = (String) comboLUT.getSelectedItem();
+                IJ.run(resultImp, lut != null ? lut : "Fire", ""); 
+                resultImp.setSlice(1);
+                
+                if (isValidLegendOpen()) updateLegend();
+                IJ.showStatus("Finished!");
+            });
             
         } catch (Exception e) {
             IJ.handleException(e);
         } finally {
-            // [逻辑锁] 无论成功失败，必须释放锁，否则 Listener 永远失效
             isBatchProcessing = false; 
         }
     }
+    
+    // [UPDATED] Smart RGB Export with Auto-Recovery
+    private void createRGBSnapshot() {
+        // 1. Safety Check: Try to recover window if null
+        if (resultImp == null) attemptRecoverResultImp();
+        
+        if (resultImp == null) {
+            IJ.error("No result image found.\nPlease run 'Apply to Stack' or ensure the result window is open.");
+            return;
+        }
+
+        boolean doStack = false;
+        
+        // 2. Ask user logic
+        if (resultImp.getStackSize() > 1) {
+            GenericDialog gd = new GenericDialog("Export Options");
+            gd.addMessage("You are processing a Multi-frame Stack.");
+            gd.addCheckbox("Convert Entire Stack (Movie)", true);
+            gd.setOKLabel("Export");
+            gd.showDialog();
+            if (gd.wasCanceled()) return;
+            doStack = gd.getNextBoolean();
+        }
+
+        ImagePlus snapshot;
+        
+        if (doStack) {
+            // A. Full Stack Export
+            IJ.showStatus("Converting stack to RGB...");
+            snapshot = resultImp.duplicate(); 
+            snapshot.setTitle("RGB-Stack-" + resultImp.getTitle());
+            snapshot.setDisplayRange(valMin, valMax);
+            IJ.run(snapshot, "RGB Color", ""); 
+        } else {
+            // B. Single Frame Snapshot
+            ImageProcessor currentIp = resultImp.getProcessor().duplicate();
+            snapshot = new ImagePlus("RGB-Snap-" + resultImp.getTitle(), currentIp);
+            snapshot.setDisplayRange(valMin, valMax);
+            snapshot.setLut(resultImp.getProcessor().getLut());
+            IJ.run(snapshot, "RGB Color", "");
+        }
+        
+        snapshot.show();
+        IJ.showStatus("RGB Export Created.");
+    }
 
     // ========================================================================
-    // LOGIC BLOCK 3: UI Event Handling
+    // LOGIC BLOCK 3: UI Events
     // ========================================================================
 
     @Override
@@ -255,39 +293,40 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         else if (src == comboNum || src == comboDen) {
             if (!isUpdatingUI) { 
                 updateChannelReferences(); 
-                createInitialResult(); // 切图了，重置结果窗口
+                createInitialResult(); 
                 updatePreview(true); 
             }
         } 
         else if (src == btnApply) {
-            // 启动新线程，但确保按钮状态管理
             new Thread(() -> {
                 SwingUtilities.invokeLater(() -> {
-                    btnApply.setEnabled(false); 
-                    btnApply.setText("Processing...");
+                    btnApply.setEnabled(false); btnApply.setText("Processing...");
                 });
-                
-                processEntireStack(); // 执行耗时任务
-                
+                processEntireStack();
                 SwingUtilities.invokeLater(() -> {
-                    btnApply.setEnabled(true); 
-                    btnApply.setText("<html><b>Apply to Stack</b></html>");
+                    btnApply.setEnabled(true); btnApply.setText("<html><b>Apply to Stack</b></html>");
                 });
             }).start();
         } 
         else if (src == btnBarShow) {
-            updateLegend();
+            if (resultImp == null) attemptRecoverResultImp(); // Auto-recover
+            if (resultImp != null) {
+                if (!resultImp.isVisible()) resultImp.show(); 
+                updateLegend();
+            }
         } 
         else if (src == btnBarClose) {
             if (isValidLegendOpen()) { impLegend.close(); impLegend = null; }
         }
+        else if (src == btnSnapshot) { 
+            createRGBSnapshot();
+        }
     }
 
-    // Slider/Spinner 变动逻辑
     private void linkSliderAndSpinner(JSlider slider, JSpinner spinner, double scaleFactor) {
         ChangeListener cl = e -> {
-            if (isUpdatingUI) return; // 正在自我更新，忽略
-            isUpdatingUI = true;      // 上锁
+            if (isUpdatingUI) return; 
+            isUpdatingUI = true;      
 
             if (e.getSource() == slider) {
                 int val = slider.getValue();
@@ -297,21 +336,15 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
                 if (scaleFactor == 1.0) slider.setValue((Integer) spinner.getValue());
                 else slider.setValue((int)((Double) spinner.getValue() / scaleFactor));
             }
-            
-            // 更新参数变量
             updateParamsFromUI();
-            
-            // 判断是 Math 变了 还是 Visual 变了
             boolean isMathChange = (slider == sliderBg || slider == sliderThresh);
             updatePreview(isMathChange);
-            
-            isUpdatingUI = false;     // 解锁
+            isUpdatingUI = false;     
         };
         slider.addChangeListener(cl); 
         spinner.addChangeListener(cl);
     }
     
-    // LUT 变动逻辑
     @Override
     public void itemStateChanged(ItemEvent e) {
         if (e.getStateChange() == ItemEvent.SELECTED && e.getSource() == comboLUT) {
@@ -326,10 +359,11 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
     }
 
     // ========================================================================
-    // LOGIC BLOCK 4: Initialization & Helpers
+    // LOGIC BLOCK 4: Init & Utils
     // ========================================================================
 
     private void refreshImageList() {
+        // 1. Find Inputs
         ImagePlus activeImp = IJ.getImage(); 
         if (activeImp == null && WindowManager.getImageCount() == 0) {
             IJ.error("RIA-J", "No images found!"); return;
@@ -344,14 +378,18 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
             java.util.List<ImagePlus> list = new java.util.ArrayList<>();
             for (int id : ids) {
                 ImagePlus imp = WindowManager.getImage(id);
-                // 排除自己生成的窗口
-                if (imp != resultImp && imp != impLegend && !imp.getTitle().contains("RIA-J")) {
+                // Filter logic
+                if (imp != resultImp && imp != impLegend && !imp.getTitle().contains("RIA-J") && !imp.getTitle().startsWith("RGB-")) {
                     list.add(imp);
                 }
             }
             availableImages = list.toArray(new ImagePlus[0]);
         }
         
+        // 2. Try to Recover Result (Don't destroy user's work if it exists)
+        if (resultImp == null) attemptRecoverResultImp();
+
+        // 3. Update Dropdowns
         isUpdatingUI = true;
         comboNum.removeAllItems(); comboDen.removeAllItems();
         if (availableImages != null && availableImages.length > 0) {
@@ -367,20 +405,23 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         isUpdatingUI = false;
         
         updateChannelReferences();
-        createInitialResult();
-        updatePreview(true);
-        IJ.showStatus("Ready.");
+
+        // 4. Smart Init
+        if (resultImp != null) {
+            // If we recovered a window, KEEP IT. Just sync params.
+            IJ.showStatus("Connected to existing Result.");
+        } else {
+            // No result found, start fresh.
+            createInitialResult();
+            updatePreview(true);
+            IJ.showStatus("Ready.");
+        }
     }
 
     private void createInitialResult() {
         if (imp1 == null) return;
-        // 如果已经有结果窗口，先把它关了（因为可能尺寸都变了）
-        if (resultImp != null) { 
-            resultImp.changes = false; 
-            resultImp.close(); 
-        }
-        int width = imp1.getWidth(); 
-        int height = imp1.getHeight();
+        if (resultImp != null) { resultImp.changes = false; resultImp.close(); }
+        int width = imp1.getWidth(); int height = imp1.getHeight();
         FloatProcessor fp = new FloatProcessor(width, height);
         resultImp = new ImagePlus("RIA-J Result", fp);
         resultImp.show();
@@ -402,7 +443,6 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
     }
     
     private void syncSlidersFromValues() {
-        // 当从 ImageJ 外部获取到 min/max 后，反向设置 slider
         int sMin = (int)(valMin * 100);
         int sMax = (int)(valMax * 100);
         if (sMin >= 0 && sMin <= 1000) sliderMin.setValue(sMin);
@@ -410,47 +450,42 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
     }
 
     // ========================================================================
-    // LOGIC BLOCK 5: Visualization (Legend)
+    // LOGIC BLOCK 5: Visualization (Legend - AI Friendly)
     // ========================================================================
 
     private void updateLegend() {
         if (resultImp == null) return;
         int barW = 20; int barH = 200;
-        int padTop = 15; int padBot = 15; int padLeft = 10; int padRight = 50;
+        int padTop = 15; int padBot = 15; int padLeft = 10; int padRight = 60;
+        int tickGap = 8; 
+        
         int totalW = padLeft + barW + padRight; int totalH = padTop + barH + padBot;
 
-        // 1. Draw Gradient (0-255)
         byte[] pixels = new byte[barW * barH];
         for (int y = 0; y < barH; y++) {
             for (int x = 0; x < barW; x++) pixels[y * barW + x] = (byte) (255 - (y * 255 / barH)); 
         }
         ByteProcessor ipBar = new ByteProcessor(barW, barH, pixels);
-        
-        // 2. Map LUT from Result Image
         ColorModel cm = resultImp.getProcessor().getColorModel();
         if(cm != null) ipBar.setColorModel(cm);
-        ImageProcessor ipLegendCol = ipBar.convertToRGB(); // 转RGB
+        ImageProcessor ipLegendCol = ipBar.convertToRGB();
 
-        // 3. Compose Legend Image
         ColorProcessor ipFinal = new ColorProcessor(totalW, totalH);
-        ipFinal.setColor(new Color(245, 245, 245)); 
+        ipFinal.setColor(Color.WHITE); // Pure White for AI
         ipFinal.fill();
         ipFinal.insert(ipLegendCol, padLeft, padTop);
+        
         ipFinal.setColor(Color.BLACK);
-        ipFinal.drawRect(padLeft-1, padTop-1, barW+1, barH+1);
-
-        // 4. Draw Text Labels based on valMin / valMax
-        ipFinal.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        ipFinal.setFont(new Font("SansSerif", Font.PLAIN, 12));
         ipFinal.setAntialiasedText(true);
         int steps = 5;
         for (int i = 0; i <= steps; i++) {
             int yPos = padTop + barH - (int)((double)i / steps * barH);
-            ipFinal.drawLine(padLeft + barW, yPos, padLeft + barW + 5, yPos);
+            ipFinal.drawLine(padLeft + barW, yPos, padLeft + barW + 3, yPos);
             double val = valMin + (valMax - valMin) * i / steps;
-            ipFinal.drawString(String.format("%.2f", val), padLeft + barW + 8, yPos + 4);
+            ipFinal.drawString(String.format("%.2f", val), padLeft + barW + tickGap, yPos + 5);
         }
 
-        // 5. Show/Update
         if (isValidLegendOpen()) {
             impLegend.setProcessor(ipFinal);
             impLegend.updateAndDraw();
@@ -471,13 +506,13 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
     @Override
     public void close() {
         super.close();
-        ImagePlus.removeImageListener(this); // Clean up
+        ImagePlus.removeImageListener(this); 
         if (isValidLegendOpen()) impLegend.close();
         if (resultImp != null) resultImp.close();
     }
     
     // ========================================================================
-    // UI Helpers (Boilerplate)
+    // GUI Construction
     // ========================================================================
 
     private void buildGUI() {
@@ -502,8 +537,6 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         GUI.center(this);
         setVisible(true);
     }
-    // ... UI Creation methods (Input, Calc, Vis, Action, Header) similar to previous version ...
-    // 为了节省篇幅，UI构建代码在下方补全，逻辑是一样的
     
     private JPanel createHeaderPanel() {
         JPanel pMain = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 0));
@@ -585,17 +618,33 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
     private JPanel createActionPanel() {
         JPanel p = createTitledPanel("Actions");
         p.setLayout(new BoxLayout(p, BoxLayout.Y_AXIS));
-        JPanel pBarBtns = new JPanel(new GridLayout(1, 2, 5, 0)); pBarBtns.setBorder(new EmptyBorder(0, 2, 5, 2)); 
+        
+        // Row 1: Legend
+        JPanel pBarBtns = new JPanel(new GridLayout(1, 2, 5, 0)); 
+        pBarBtns.setBorder(new EmptyBorder(0, 2, 5, 2)); 
         btnBarShow = new JButton("Show Legend"); btnBarShow.setFont(FONT_NORMAL); btnBarShow.addActionListener(this);
         btnBarClose = new JButton("Close Legend"); btnBarClose.setFont(FONT_NORMAL); btnBarClose.addActionListener(this);
         pBarBtns.add(btnBarShow); pBarBtns.add(btnBarClose);
         p.add(pBarBtns);
+
+        // Row 2: Snapshot
+        btnSnapshot = new JButton("Save as RGB (Publication)");
+        btnSnapshot.setFont(FONT_BOLD);
+        btnSnapshot.setForeground(new Color(0, 0, 128)); 
+        btnSnapshot.setAlignmentX(Component.CENTER_ALIGNMENT);
+        btnSnapshot.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
+        btnSnapshot.addActionListener(this);
+        p.add(Box.createVerticalStrut(5));
+        p.add(btnSnapshot);
+
+        // Row 3: Apply
         btnApply = new JButton("<html><b>Apply to Stack</b></html>");
         btnApply.setFont(FONT_BOLD); btnApply.setForeground(new Color(200, 0, 0)); 
         btnApply.setAlignmentX(Component.CENTER_ALIGNMENT);
         btnApply.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40)); 
         btnApply.setPreferredSize(new Dimension(COMPONENT_WIDTH, 35)); 
         btnApply.addActionListener(this);
+        p.add(Box.createVerticalStrut(5));
         p.add(btnApply);
         return p;
     }
