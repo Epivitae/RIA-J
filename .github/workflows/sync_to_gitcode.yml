@@ -1,0 +1,26 @@
+name: Sync to GitCode
+
+on:
+  push:
+    branches: [ main, master ] # 当主分支有代码推送时触发同步
+  workflow_dispatch:          # 允许手动触发同步
+
+jobs:
+  repo-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mirror the GitHub repo to GitCode
+        uses: Yikun/hub-mirror-action@master
+        with:
+          # 源端（GitHub）信息
+          src: github/RIA-J
+          # 目的端（GitCode）信息
+          dst: gitcode/RIA-J
+          # 目的端访问令牌
+          dst_key: ${{ secrets.GITCODE_TOKEN }}
+          dst_token: ${{ secrets.GITCODE_TOKEN }}
+          # 静态地址，GitCode 的 Git 基础地址
+          static_list: "RIA-J"
+          account_type: user
+          force_update: true
+          debug: true
