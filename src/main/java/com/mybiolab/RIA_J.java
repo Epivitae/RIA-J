@@ -78,7 +78,7 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
     private double valMax = 5.0;
 
     public RIA_J() {
-        super("Ratio Analyzer"); 
+        super("RIA Controller v2.2.0"); 
         ImagePlus.addImageListener(this); 
     }
 
@@ -697,7 +697,7 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
         lblTitle.setFont(FONT_HEADER); 
         lblTitle.setForeground(COLOR_THEME_BLUE); 
         pText.add(lblTitle); pText.add(Box.createVerticalStrut(2)); 
-        JLabel lblCopy = new JLabel("© 2026 www.cns.ac.cn"); 
+        JLabel lblCopy = new JLabel("v2.2.0 | © 2026 www.cns.ac.cn"); 
         lblCopy.setFont(FONT_SMALL); 
         lblCopy.setForeground(Color.GRAY);
         pText.add(lblCopy); pMain.add(pText);
