@@ -1,0 +1,49 @@
+{
+  "title": "RIA-J: Ratio Imaging Analyzer (Java) - Publication-Grade Ratiometric Analysis for ImageJ/Fiji (v{{VERSION}})",
+  "description": "<p><strong>RIA-J (Ratio Imaging Analyzer - Java Edition) v{{VERSION}}</strong> is a publication-grade ImageJ/Fiji plugin designed to streamline the workflow of ratiometric fluorescence analysis. It brings the rigorous quantification capabilities of the standalone <a href=\"https://github.com/Epivitae/RatioImagingAnalyzer\">RIA (Python)</a> project directly into the native ImageJ ecosystem.</p><p><strong>v{{VERSION}} Update:</strong> Now featuring a <strong>&quot;Direct Stack&quot;</strong> engine, RIA-J automatically processes high-dimensional time-lapse datasets in the background immediately upon import, offering a seamless &quot;What You See Is What You Get&quot; experience without manual batch application.</p><p><strong>Key Features:</strong></p><ul><li><strong>🚀 Direct Stack Workflow:</strong> Eliminates manual batch steps. The plugin automatically computes the entire ratio stack upon import, allowing real-time parameter tuning that is instantly reflected across the dataset.</li><li><strong>🧠 Smart Automation:</strong> Features global window scanning to detect open images, intelligently splitting composite files and auto-pairing numerator/denominator channels.</li><li><strong>⚡ Publication-Ready Export:</strong> Includes a dedicated <strong>RGB Export</strong> engine that generates &quot;burnt-in&quot; RGB Snapshots or RGB Stacks (Videos). It automatically synchronizes visualization settings (LUTs, contrast) to all frames before export.</li><li><strong>🎨 AI-Friendly Visualization:</strong> Generates independent, borderless Legend/Color Bar windows with pure white backgrounds, optimized for easy assembly in Adobe Illustrator or Inkscape.</li><li><strong>🏷️ Standardized Data Management:</strong> Enforces a strict naming convention (e.g., <code>RIA-Result</code>, <code>RIA-RGB-Stack</code>) and includes a filename cleaner to strip technical prefixes, ensuring data traceability.</li></ul>",
+  "creators": [
+    {
+      "name": "Wang, Kui",
+      "affiliation": "Center for Excellence in Brain Science and Intelligence Technology (Institute of Neuroscience), Chinese Academy of Sciences",
+      "orcid": "0000-0002-9436-3632"
+    }
+  ],
+  "access_right": "open",
+  "license": {
+    "id": "MIT"
+  },
+  "keywords": [
+    "imagej",
+    "fiji",
+    "imagej-plugin",
+    "java",
+    "swing-gui",
+    "scientific-software",
+    "bioimage-analysis",
+    "quantitative-biology",
+    "ratiometric-imaging",
+    "ratiometric-analysis",
+    "fluorescence-microscopy",
+    "calcium-imaging",
+    "ion-sensing",
+    "metabolic-imaging",
+    "redox-ratio",
+    "nadh-imaging",
+    "biosensors",
+    "background-subtraction",
+    "dynamic-masking",
+    "publication-quality",
+    "visualization"
+  ],
+  "upload_type": "software",
+  "related_identifiers": [
+    {
+      "relation": "isSupplementTo",
+      "identifier": "https://github.com/Epivitae/RIA-J"
+    },
+    {
+      "relation": "isVersionOf",
+      "identifier": "https://github.com/Epivitae/RatioImagingAnalyzer"
+    }
+  ]
+}
