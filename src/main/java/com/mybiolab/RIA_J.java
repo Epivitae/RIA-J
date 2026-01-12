@@ -693,7 +693,7 @@ public class RIA_J extends PlugInFrame implements PlugIn, ActionListener, ItemLi
             pMain.add(new JLabel(new ImageIcon(img)));
         }
         JPanel pText = new JPanel(); pText.setLayout(new BoxLayout(pText, BoxLayout.Y_AXIS));
-        JLabel lblTitle = new JLabel("RIA-J Controller"); 
+        JLabel lblTitle = new JLabel("RIA-J Ratio Analyzer"); 
         lblTitle.setFont(FONT_HEADER); 
         lblTitle.setForeground(COLOR_THEME_BLUE); 
         pText.add(lblTitle); pText.add(Box.createVerticalStrut(2)); 
