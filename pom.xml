@@ -87,6 +87,8 @@
     </dependencies>
 
     <build>
+        <finalName>RIA_Analyzer_v${project.version}</finalName>
+        
         <plugins>
             <plugin>
                 <artifactId>maven-jar-plugin</artifactId>
